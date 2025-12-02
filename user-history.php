@@ -300,8 +300,19 @@ class User_History {
             $new_value = '';
 
             if ($field === 'user_pass') {
-                // Only log the event that password changed - never log any password values
-                if (isset($userdata['user_pass']) && !empty($userdata['user_pass'])) {
+                // Only log when password actually changed (new hash differs from old hash)
+                // Never log any password values - just the event
+                $old_pass = '';
+                if (is_object($old_user) && isset($old_user->user_pass)) {
+                    $old_pass = $old_user->user_pass;
+                } elseif (is_object($old_user) && isset($old_user->data->user_pass)) {
+                    $old_pass = $old_user->data->user_pass;
+                }
+
+                $new_pass = isset($userdata['user_pass']) ? $userdata['user_pass'] : '';
+
+                // Only log if password hash actually changed
+                if (!empty($new_pass) && $old_pass !== $new_pass) {
                     $this->log_change($user_id, $changed_by, $field, $label, '', '', 'update');
                 }
                 continue;
