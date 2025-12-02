@@ -41,6 +41,7 @@
 .user-history-table {
     margin-top: 10px;
     border-collapse: collapse;
+    border-bottom-width: 2px !important;
 }
 
 .user-history-table th {

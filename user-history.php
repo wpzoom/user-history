@@ -3,7 +3,7 @@
  * Plugin Name: User History
  * Plugin URI: https://www.wpzoom.com
  * Description: Tracks changes made to user accounts (name, email, username, etc.) and displays a history log on the user edit page.
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: WPZOOM
  * Author URI: https://www.wpzoom.com
  * License: GPL v2 or later
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('USER_HISTORY_VERSION', '1.0.1');
+define('USER_HISTORY_VERSION', '1.0.2');
 define('USER_HISTORY_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('USER_HISTORY_PLUGIN_URL', plugin_dir_url(__FILE__));
 

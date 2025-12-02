@@ -4,7 +4,7 @@ Tags: user history, user log, audit log, change username, user tracking
 Requires at least: 5.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.0.1
+Stable tag: 1.0.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -21,7 +21,9 @@ User History tracks all changes made to user profiles and displays a complete hi
 * **Change Username** - Allows admins to change usernames directly from the user edit page (WordPress normally doesn't allow this)
 * **Search by Previous Values** - Find users on the All Users page by their old email or username
 * **See Who Made Changes** - Each log entry shows whether the user changed their own profile or if an admin made the change
+* **Clear History** - Admins can clear the history log for any user
 * **Multisite Compatible** - Works with WordPress multisite installations
+* **Members Plugin Compatible** - Works with the Members plugin for multiple role assignments
 
 **Use Cases:**
 
@@ -66,11 +68,19 @@ Yes! On the All Users page, use the search box to search for any previous email,
 * Last Name
 * Nickname
 * Biographical Info
-* Role
+* Role (including multiple roles with Members plugin)
 
 = Is this plugin multisite compatible? =
 
 Yes. The plugin works on multisite installations and properly handles super admin username changes.
+
+= Does it work with the Members plugin? =
+
+Yes. The plugin correctly tracks role changes when using the Members plugin, which allows assigning multiple roles to users.
+
+= How do I clear a user's history? =
+
+On the user edit page, scroll down to the Account History section and click the "Clear Log" button.
 
 == Screenshots ==
 
@@ -79,6 +89,12 @@ Yes. The plugin works on multisite installations and properly handles super admi
 3. Search results showing users found by previous email/username
 
 == Changelog ==
+
+= 1.0.2 =
+* Added Clear Log button to delete history for a user
+* Improved role change tracking for Members plugin compatibility
+* Fixed false positive password change logging when saving without changes
+* Fixed duplicate role change entries
 
 = 1.0.1 =
 * Added search functionality to find users by previous email/username
@@ -93,6 +109,9 @@ Yes. The plugin works on multisite installations and properly handles super admi
 * Account History display on user edit page
 
 == Upgrade Notice ==
+
+= 1.0.2 =
+Adds Clear Log button, fixes role tracking with Members plugin, and fixes false positive password logging.
 
 = 1.0.1 =
 Adds ability to search users by their previous email or username on the All Users page.
