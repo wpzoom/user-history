@@ -154,6 +154,9 @@ class User_History {
 
         // AJAX handler for loading more history
         add_action('wp_ajax_load_more_user_history', [$this, 'ajax_load_more_history']);
+
+        // AJAX handler for changing username
+        add_action('wp_ajax_user_history_change_username', [$this, 'ajax_change_username']);
     }
 
     /**
@@ -426,7 +429,14 @@ class User_History {
         wp_localize_script('user-history-admin', 'userHistoryData', [
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce'   => wp_create_nonce('user_history_nonce'),
+            'changeUsernameNonce' => wp_create_nonce('user_history_change_username'),
             'userId'  => $user_id,
+            'i18n'    => [
+                'change'       => __('Change', 'user-history'),
+                'cancel'       => __('Cancel', 'user-history'),
+                'pleaseWait'   => __('Please wait...', 'user-history'),
+                'errorGeneric' => __('Something went wrong. Please try again.', 'user-history'),
+            ],
         ]);
     }
 
@@ -586,6 +596,148 @@ class User_History {
             'hasMore' => $has_more,
             'newOffset' => $offset + 20,
         ]);
+    }
+
+    /**
+     * AJAX handler for changing username
+     */
+    public function ajax_change_username() {
+        $response = [
+            'success'   => false,
+            'new_nonce' => wp_create_nonce('user_history_change_username'),
+        ];
+
+        // Check capability
+        if (!current_user_can('edit_users')) {
+            $response['message'] = __('You do not have permission to change usernames.', 'user-history');
+            wp_send_json($response);
+        }
+
+        // Validate nonce
+        if (!check_ajax_referer('user_history_change_username', '_ajax_nonce', false)) {
+            $response['message'] = __('Security check failed. Please refresh the page.', 'user-history');
+            wp_send_json($response);
+        }
+
+        // Validate request
+        if (empty($_POST['new_username']) || empty($_POST['current_username'])) {
+            $response['message'] = __('Invalid request.', 'user-history');
+            wp_send_json($response);
+        }
+
+        $new_username = sanitize_user(trim($_POST['new_username']), true);
+        $old_username = sanitize_user(trim($_POST['current_username']), true);
+
+        // Old username must exist
+        $user_id = username_exists($old_username);
+        if (!$user_id) {
+            $response['message'] = __('Invalid request.', 'user-history');
+            wp_send_json($response);
+        }
+
+        // If same username, nothing to do
+        if ($new_username === $old_username) {
+            $response['success'] = true;
+            $response['message'] = __('Username unchanged.', 'user-history');
+            wp_send_json($response);
+        }
+
+        // Validate username length
+        if (mb_strlen($new_username) < 3 || mb_strlen($new_username) > 60) {
+            $response['message'] = __('Username must be between 3 and 60 characters.', 'user-history');
+            wp_send_json($response);
+        }
+
+        // Validate username characters
+        if (!validate_username($new_username)) {
+            $response['message'] = __('This username contains invalid characters.', 'user-history');
+            wp_send_json($response);
+        }
+
+        // Check illegal logins
+        $illegal_logins = array_map('strtolower', (array) apply_filters('illegal_user_logins', []));
+        if (in_array(strtolower($new_username), $illegal_logins, true)) {
+            $response['message'] = __('Sorry, that username is not allowed.', 'user-history');
+            wp_send_json($response);
+        }
+
+        // Check if new username already exists
+        if (username_exists($new_username)) {
+            $response['message'] = sprintf(__('The username "%s" is already taken.', 'user-history'), $new_username);
+            wp_send_json($response);
+        }
+
+        // Change the username
+        $this->change_username($user_id, $old_username, $new_username);
+
+        $response['success'] = true;
+        $response['message'] = sprintf(__('Username changed to "%s".', 'user-history'), $new_username);
+        wp_send_json($response);
+    }
+
+    /**
+     * Change a user's username
+     */
+    private function change_username($user_id, $old_username, $new_username) {
+        global $wpdb;
+
+        // Log the change before making it
+        $this->log_change(
+            $user_id,
+            get_current_user_id(),
+            'user_login',
+            'Username',
+            $old_username,
+            $new_username,
+            'update'
+        );
+
+        // Update user_login
+        $wpdb->update(
+            $wpdb->users,
+            ['user_login' => $new_username],
+            ['ID' => $user_id],
+            ['%s'],
+            ['%d']
+        );
+
+        // Update user_nicename if it matches the old username
+        $wpdb->query($wpdb->prepare(
+            "UPDATE $wpdb->users SET user_nicename = %s WHERE ID = %d AND user_nicename = %s",
+            sanitize_title($new_username),
+            $user_id,
+            sanitize_title($old_username)
+        ));
+
+        // Update display_name if it matches the old username
+        $wpdb->query($wpdb->prepare(
+            "UPDATE $wpdb->users SET display_name = %s WHERE ID = %d AND display_name = %s",
+            $new_username,
+            $user_id,
+            $old_username
+        ));
+
+        // Handle multisite super admin
+        if (is_multisite()) {
+            $super_admins = (array) get_site_option('site_admins', ['admin']);
+            $key = array_search($old_username, $super_admins);
+            if ($key !== false) {
+                $super_admins[$key] = $new_username;
+                update_site_option('site_admins', $super_admins);
+            }
+        }
+
+        // Clear user cache
+        clean_user_cache($user_id);
+
+        /**
+         * Fires after a username has been changed
+         *
+         * @param int    $user_id      The user ID
+         * @param string $old_username The old username
+         * @param string $new_username The new username
+         */
+        do_action('user_history_username_changed', $user_id, $old_username, $new_username);
     }
 }
 

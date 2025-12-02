@@ -166,3 +166,41 @@
         text-align: center;
     }
 }
+
+/* ==========================================================================
+   Change Username Feature
+   ========================================================================== */
+
+.user-history-change-username-link {
+    margin-left: 10px;
+    text-decoration: none;
+}
+
+.user-history-change-username-form {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.user-history-change-username-form .user-history-new-username {
+    min-height: 30px;
+}
+
+.user-history-change-username-message {
+    display: none;
+    padding: 4px 10px;
+    border-radius: 3px;
+    font-size: 13px;
+    margin-left: 5px;
+}
+
+.user-history-change-username-message.success {
+    background: #d4edda;
+    color: #155724;
+}
+
+.user-history-change-username-message.error {
+    background: #f8d7da;
+    color: #721c24;
+}
