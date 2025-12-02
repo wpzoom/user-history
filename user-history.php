@@ -284,9 +284,9 @@ class User_History {
             $new_value = '';
 
             if ($field === 'user_pass') {
-                // Special handling for password - don't log actual values
+                // Only log the event that password changed - never log any password values
                 if (isset($userdata['user_pass']) && !empty($userdata['user_pass'])) {
-                    $this->log_change($user_id, $changed_by, $field, $label, '[hidden]', '[changed]', 'update');
+                    $this->log_change($user_id, $changed_by, $field, $label, '', '', 'update');
                 }
                 continue;
             }
@@ -590,6 +590,9 @@ class User_History {
             $output .= '<td class="column-change">';
             if ($entry->change_type === 'create') {
                 $output .= '<span class="history-new-value">' . esc_html($entry->new_value) . '</span>';
+            } elseif ($entry->field_name === 'user_pass') {
+                // Password changes just show "Changed" - no values ever stored
+                $output .= '<span class="history-new-value">' . esc_html__('Changed', 'user-history') . '</span>';
             } else {
                 if (!empty($entry->old_value)) {
                     $output .= '<span class="history-old-value">' . esc_html($this->truncate_value($entry->old_value)) . '</span>';
