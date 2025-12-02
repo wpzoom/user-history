@@ -157,6 +157,9 @@ class User_History {
 
         // AJAX handler for changing username
         add_action('wp_ajax_user_history_change_username', [$this, 'ajax_change_username']);
+
+        // Extend user search to include history
+        add_action('pre_user_query', [$this, 'extend_user_search']);
     }
 
     /**
@@ -194,6 +197,54 @@ class User_History {
      */
     public function capture_old_data_on_query($query) {
         // Reserved for future use
+    }
+
+    /**
+     * Extend user search to include historical values
+     *
+     * When searching users in admin, also search through old_value in history table
+     * to find users by their previous usernames, emails, names, etc.
+     */
+    public function extend_user_search($query) {
+        global $wpdb, $pagenow;
+
+        // Only run on users.php admin page with a search
+        if (!is_admin() || $pagenow !== 'users.php') {
+            return;
+        }
+
+        // Check if there's a search term
+        $search = $query->get('search');
+        if (empty($search)) {
+            return;
+        }
+
+        // Remove the wildcard characters that WordPress adds
+        $search_term = trim($search, '*');
+        if (empty($search_term)) {
+            return;
+        }
+
+        $history_table = $wpdb->prefix . self::TABLE_NAME;
+
+        // Find user IDs that have matching old values in history
+        $user_ids_from_history = $wpdb->get_col($wpdb->prepare(
+            "SELECT DISTINCT user_id FROM $history_table
+            WHERE old_value LIKE %s
+            AND field_name IN ('user_login', 'user_email', 'first_name', 'last_name', 'display_name', 'nickname')",
+            '%' . $wpdb->esc_like($search_term) . '%'
+        ));
+
+        if (empty($user_ids_from_history)) {
+            return;
+        }
+
+        // Add these user IDs to the search results by modifying the WHERE clause
+        // We inject an OR condition: (original search conditions) OR (ID IN history matches)
+        $ids_list = implode(',', array_map('intval', $user_ids_from_history));
+
+        // Append our condition to include users found in history
+        $query->query_where .= " OR {$wpdb->users}.ID IN ($ids_list)";
     }
 
     /**
