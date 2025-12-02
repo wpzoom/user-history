@@ -2,6 +2,9 @@
 
 A WordPress plugin that tracks changes made to user accounts and allows admins to change usernames.
 
+<img width="1547" height="1071" alt="image" src="https://github.com/user-attachments/assets/1ba77413-4e63-416b-8ca4-242e499acadb" />
+
+
 ## Features
 
 - **Track Profile Changes** - Automatically logs changes to username, email, display name, first/last name, nickname, website, bio, and role
