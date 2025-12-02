@@ -65,6 +65,18 @@ class User_History {
     private $old_user_meta = [];
 
     /**
+     * Track which users have had role changes logged this request
+     * (to prevent duplicate logging from set_user_role and updated_user_meta)
+     */
+    private $role_logged = [];
+
+    /**
+     * Pending role changes to log at shutdown (to capture final state)
+     * Format: [user_id => old_roles_string]
+     */
+    private $pending_role_changes = [];
+
+    /**
      * Singleton instance
      */
     private static $instance = null;
@@ -155,6 +167,9 @@ class User_History {
 
         // Hook specifically for role changes (fires when set_role() is called)
         add_action('set_user_role', [$this, 'log_role_change'], 10, 3);
+
+        // Log pending role changes at shutdown (to capture final state after all plugins finish)
+        add_action('shutdown', [$this, 'log_pending_role_changes']);
 
         // Hook for new user registration
         add_action('user_register', [$this, 'log_user_creation'], 10, 2);
@@ -358,10 +373,22 @@ class User_History {
             ? $this->old_user_meta[$user_id][$meta_key]
             : '';
 
-        // Handle role/capabilities specially
+        // Handle role/capabilities specially - defer to shutdown to capture final state
         if ($meta_key === $this->capabilities_key) {
-            $old_value = $this->format_capabilities($old_value);
-            $meta_value = $this->format_capabilities($meta_value);
+            // Skip if already logged by set_user_role hook
+            if (isset($this->role_logged[$user_id])) {
+                return;
+            }
+
+            // Store old value for later comparison at shutdown
+            // Only store if not already pending (first change captures original state)
+            if (!isset($this->pending_role_changes[$user_id])) {
+                $this->pending_role_changes[$user_id] = [
+                    'old_value'  => $this->format_capabilities($old_value),
+                    'changed_by' => get_current_user_id(),
+                ];
+            }
+            return;
         }
 
         // Only log if actually changed
@@ -407,6 +434,11 @@ class User_History {
      * @param array  $old_roles The old roles
      */
     public function log_role_change($user_id, $role, $old_roles) {
+        // Skip if already logged by updated_user_meta hook
+        if (isset($this->role_logged[$user_id])) {
+            return;
+        }
+
         $old_role = !empty($old_roles) ? implode(', ', $old_roles) : '';
         $new_role = $role;
 
@@ -414,6 +446,9 @@ class User_History {
         if ($old_role === $new_role) {
             return;
         }
+
+        // Mark as logged to prevent duplicate from updated_user_meta
+        $this->role_logged[$user_id] = true;
 
         $this->log_change(
             $user_id,
@@ -424,6 +459,38 @@ class User_History {
             $new_role,
             'update'
         );
+    }
+
+    /**
+     * Log pending role changes at shutdown
+     *
+     * This ensures we capture the final state after plugins like Members
+     * have finished all their role modifications.
+     */
+    public function log_pending_role_changes() {
+        foreach ($this->pending_role_changes as $user_id => $data) {
+            // Skip if already logged by set_user_role hook
+            if (isset($this->role_logged[$user_id])) {
+                continue;
+            }
+
+            // Get the current (final) capabilities
+            $current_caps = get_user_meta($user_id, $this->capabilities_key, true);
+            $new_value = $this->format_capabilities($current_caps);
+
+            // Only log if actually changed
+            if ($data['old_value'] !== $new_value) {
+                $this->log_change(
+                    $user_id,
+                    $data['changed_by'],
+                    $this->capabilities_key,
+                    'Role',
+                    $data['old_value'],
+                    $new_value,
+                    'update'
+                );
+            }
+        }
     }
 
     /**
