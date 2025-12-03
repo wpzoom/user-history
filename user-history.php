@@ -646,7 +646,7 @@ class User_History {
                     <span class="user-history-count">
                         <?php printf(
                             esc_html(_n('%d change recorded', '%d changes recorded', $total_count, 'user-history')),
-                            $total_count
+                            (int) $total_count
                         ); ?>
                     </span>
                 <?php endif; ?>
@@ -921,7 +921,8 @@ class User_History {
             wp_send_json($response);
         }
 
-        // Check illegal logins
+        // Check illegal logins (using WordPress core filter)
+        // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core WP filter
         $illegal_logins = array_map('strtolower', (array) apply_filters('illegal_user_logins', []));
         if (in_array(strtolower($new_username), $illegal_logins, true)) {
             $response['message'] = __('Sorry, that username is not allowed.', 'user-history');
