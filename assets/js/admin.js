@@ -8,6 +8,7 @@
         initLoadMore();
         initChangeUsername();
         initClearHistory();
+        initLockToggle();
     });
 
     /**
@@ -270,6 +271,86 @@
                 error: function() {
                     alert(i18n.errorGeneric || 'Something went wrong.');
                     $btn.removeClass('loading').prop('disabled', false).text(i18n.clearLog || 'Clear Log');
+                }
+            });
+        });
+    }
+
+    /**
+     * Initialize lock/unlock toggle functionality
+     */
+    function initLockToggle() {
+        var $btn = $('#user-history-lock-toggle');
+
+        if (!$btn.length) {
+            return;
+        }
+
+        var i18n = userHistoryData.i18n || {};
+
+        $btn.on('click', function(e) {
+            e.preventDefault();
+
+            var isLocked = $btn.data('locked') === 'yes';
+            var action = isLocked ? 'unlock' : 'lock';
+
+            var confirmMsg = isLocked
+                ? (i18n.confirmUnlock || 'Are you sure you want to unlock this user?')
+                : (i18n.confirmLock || 'Are you sure you want to lock this user? They will be logged out immediately.');
+
+            if (!confirm(confirmMsg)) {
+                return;
+            }
+
+            $btn.prop('disabled', true).text(i18n.pleaseWait || 'Please wait...');
+
+            $.ajax({
+                url: userHistoryData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'user_history_toggle_lock',
+                    nonce: userHistoryData.lockNonce,
+                    user_id: userHistoryData.userId,
+                    lock_action: action
+                },
+                success: function(response) {
+                    var $msg = $('.user-history-lock-message');
+
+                    if (response.success) {
+                        var nowLocked = response.data.isLocked;
+                        $btn.data('locked', nowLocked ? 'yes' : 'no');
+
+                        // Update badge
+                        var $badge = $('.user-history-lock-badge');
+                        if (nowLocked) {
+                            $badge.removeClass('active').addClass('locked')
+                                .text(i18n.locked || 'Locked');
+                            $btn.removeClass('button-link-delete');
+                        } else {
+                            $badge.removeClass('locked').addClass('active')
+                                .text(i18n.active || 'Active');
+                            $btn.addClass('button-link-delete');
+                        }
+
+                        $msg.removeClass('success error').addClass('success')
+                            .text(response.data.message).show();
+                        setTimeout(function() { $msg.fadeOut(); }, 3000);
+                    } else {
+                        $msg.removeClass('success error').addClass('error')
+                            .text(response.data.message).show();
+                    }
+                },
+                error: function() {
+                    var $msg = $('.user-history-lock-message');
+                    $msg.removeClass('success error').addClass('error')
+                        .text(i18n.errorGeneric || 'Something went wrong.').show();
+                },
+                complete: function() {
+                    $btn.prop('disabled', false);
+                    var isNowLocked = $btn.data('locked') === 'yes';
+                    $btn.text(isNowLocked
+                        ? (i18n.unlockAccount || 'Unlock Account')
+                        : (i18n.lockAccount || 'Lock Account'));
                 }
             });
         });

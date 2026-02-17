@@ -220,6 +220,87 @@
 }
 
 /* ==========================================================================
+   Lock/Unlock User Feature
+   ========================================================================== */
+
+/* Lock badge - used on user edit page and users list */
+.user-history-lock-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.5;
+}
+
+.user-history-lock-badge.locked {
+    background: #fef0f0;
+    color: #b32d2e;
+    border: 1px solid #f0c0c0;
+}
+
+.user-history-lock-badge.active {
+    color: #787c82;
+}
+
+/* Lock section on user edit page */
+.user-history-lock-section .button-link-delete {
+    color: #b32d2e;
+    border-color: #b32d2e;
+    background: #fff;
+}
+
+.user-history-lock-section .button-link-delete:hover,
+.user-history-lock-section .button-link-delete:focus {
+    color: #fff;
+    background: #b32d2e;
+    border-color: #b32d2e;
+}
+
+/* Lock toggle message */
+.user-history-lock-message {
+    display: none;
+    padding: 4px 10px;
+    border-radius: 3px;
+    font-size: 13px;
+    margin-left: 10px;
+}
+
+.user-history-lock-message.success {
+    background: #d4edda;
+    color: #155724;
+}
+
+.user-history-lock-message.error {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+/* Lock/Unlock history entry types */
+.user-history-entry.type-lock .column-field strong {
+    color: #b32d2e;
+}
+
+.user-history-entry.type-lock .history-new-value {
+    background: #fef0f0;
+    color: #b32d2e;
+}
+
+.user-history-entry.type-unlock .column-field strong {
+    color: #0a6b2e;
+}
+
+.user-history-entry.type-unlock .history-new-value {
+    background: #d4edda;
+    color: #0a6b2e;
+}
+
+/* Users list locked column */
+.column-user_locked {
+    width: 80px;
+}
+
+/* ==========================================================================
    Delete User Section
    ========================================================================== */
 
