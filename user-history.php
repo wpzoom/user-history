@@ -24,72 +24,59 @@ define('USER_HISTORY_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('USER_HISTORY_VERSION', get_file_data(__FILE__, ['Version' => 'Version'])['Version']);
 
 /**
- * Main User History Class
+ * Main User History Class — Orchestrator + shared database layer.
  */
 class User_History {
 
     /**
-     * Database table name (without prefix)
+     * Database table name (without prefix).
      */
     const TABLE_NAME = 'user_history';
 
     /**
-     * User meta key for lock status
+     * User meta key for lock status.
      */
     const LOCKED_META_KEY = 'user_history_locked';
 
     /**
-     * Fields to track in wp_users table
-     */
-    private $tracked_fields = [
-        'user_login'    => 'Username',
-        'user_email'    => 'Email',
-        'user_pass'     => 'Password',
-        'user_nicename' => 'Nicename',
-        'display_name'  => 'Display Name',
-        'user_url'      => 'Website',
-    ];
-
-    /**
-     * User meta fields to track (capabilities key is added dynamically in init)
-     */
-    private $tracked_meta = [
-        'first_name'   => 'First Name',
-        'last_name'    => 'Last Name',
-        'nickname'     => 'Nickname',
-        'description'  => 'Biographical Info',
-    ];
-
-    /**
-     * The capabilities meta key (set dynamically based on table prefix)
-     */
-    private $capabilities_key = '';
-
-    /**
-     * Temporarily store old user data before update
-     */
-    private $old_user_data = [];
-    private $old_user_meta = [];
-
-    /**
-     * Track which users have had role changes logged this request
-     * (to prevent duplicate logging from set_user_role and updated_user_meta)
-     */
-    private $role_logged = [];
-
-    /**
-     * Pending role changes to log at shutdown (to capture final state)
-     * Format: [user_id => old_roles_string]
-     */
-    private $pending_role_changes = [];
-
-    /**
-     * Singleton instance
+     * Singleton instance.
+     *
+     * @var User_History
      */
     private static $instance = null;
 
     /**
-     * Get singleton instance
+     * Change tracker instance.
+     *
+     * @var User_History_Tracker
+     */
+    public $tracker;
+
+    /**
+     * Lock feature instance.
+     *
+     * @var User_History_Lock
+     */
+    public $lock;
+
+    /**
+     * Admin UI instance.
+     *
+     * @var User_History_Admin
+     */
+    public $admin;
+
+    /**
+     * Settings instance.
+     *
+     * @var User_History_Settings
+     */
+    public $settings;
+
+    /**
+     * Get singleton instance.
+     *
+     * @return User_History
      */
     public static function get_instance() {
         if (null === self::$instance) {
@@ -99,7 +86,7 @@ class User_History {
     }
 
     /**
-     * Constructor
+     * Constructor.
      */
     private function __construct() {
         // Activation hook
@@ -110,7 +97,7 @@ class User_History {
     }
 
     /**
-     * Plugin activation
+     * Plugin activation.
      */
     public function activate() {
         $this->create_table();
@@ -118,7 +105,7 @@ class User_History {
     }
 
     /**
-     * Create database table
+     * Create database table.
      */
     private function create_table() {
         global $wpdb;
@@ -149,81 +136,27 @@ class User_History {
     }
 
     /**
-     * Initialize plugin
+     * Initialize plugin: check for upgrades, include files, create feature instances.
      */
     public function init() {
-        global $wpdb;
-
-        // Set the capabilities meta key dynamically based on table prefix
-        $this->capabilities_key = $wpdb->prefix . 'capabilities';
-        $this->tracked_meta[$this->capabilities_key] = 'Role';
-
         // Check for database updates
         $this->maybe_upgrade();
 
-        // User lock - authentication blocking (runs on all requests, not just admin)
-        add_filter('authenticate', [$this, 'block_locked_user_auth'], 1000, 3);
-        add_action('wp_authenticate_application_password_errors', [$this, 'block_locked_user_app_password'], 10, 2);
-        add_filter('determine_current_user', [$this, 'block_locked_user_session'], 9999);
+        // Include feature classes
+        require_once USER_HISTORY_PLUGIN_DIR . 'includes/class-tracker.php';
+        require_once USER_HISTORY_PLUGIN_DIR . 'includes/class-lock.php';
+        require_once USER_HISTORY_PLUGIN_DIR . 'includes/class-admin.php';
+        require_once USER_HISTORY_PLUGIN_DIR . 'includes/class-settings.php';
 
-        // Hook before user update to capture old values
-        add_action('pre_user_query', [$this, 'capture_old_data_on_query']);
-        add_filter('wp_pre_insert_user_data', [$this, 'capture_old_user_data'], 10, 4);
-
-        // Hook after user update to log changes
-        add_action('profile_update', [$this, 'log_user_changes'], 10, 3);
-
-        // Hook for user meta changes
-        add_action('update_user_meta', [$this, 'capture_old_meta'], 10, 4);
-        add_action('updated_user_meta', [$this, 'log_meta_change'], 10, 4);
-
-        // Hook specifically for role changes (fires when set_role() is called)
-        add_action('set_user_role', [$this, 'log_role_change'], 10, 3);
-
-        // Log pending role changes at shutdown (to capture final state after all plugins finish)
-        add_action('shutdown', [$this, 'log_pending_role_changes']);
-
-        // Hook for new user registration
-        add_action('user_register', [$this, 'log_user_creation'], 10, 2);
-
-        // Admin UI hooks
-        add_action('edit_user_profile', [$this, 'display_lock_user_section'], 98);
-        add_action('show_user_profile', [$this, 'display_lock_user_section'], 98);
-        add_action('edit_user_profile', [$this, 'display_history_section'], 99);
-        add_action('show_user_profile', [$this, 'display_history_section'], 99);
-        add_action('edit_user_profile', [$this, 'display_delete_user_button'], 100);
-        add_action('show_user_profile', [$this, 'display_delete_user_button'], 100);
-
-        // Enqueue admin styles
-        add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
-
-        // AJAX handlers
-        add_action('wp_ajax_load_more_user_history', [$this, 'ajax_load_more_history']);
-        add_action('wp_ajax_user_history_change_username', [$this, 'ajax_change_username']);
-        add_action('wp_ajax_clear_user_history', [$this, 'ajax_clear_history']);
-        add_action('wp_ajax_user_history_toggle_lock', [$this, 'ajax_toggle_lock']);
-
-        // Extend user search to include history
-        add_action('pre_user_query', [$this, 'extend_user_search']);
-
-        // Users list - lock column, bulk actions, filter, row actions
-        add_filter('user_row_actions', [$this, 'add_lock_row_action'], 10, 2);
-        add_action('admin_init', [$this, 'process_lock_row_action']);
-        add_filter('manage_users_columns', [$this, 'add_locked_column']);
-        add_filter('manage_users_custom_column', [$this, 'render_locked_column'], 10, 3);
-        add_filter('bulk_actions-users', [$this, 'add_lock_bulk_actions']);
-        add_filter('handle_bulk_actions-users', [$this, 'handle_lock_bulk_actions'], 10, 3);
-        add_filter('views_users', [$this, 'add_locked_users_view']);
-        add_action('pre_get_users', [$this, 'filter_locked_users_query']);
-        add_action('admin_notices', [$this, 'lock_bulk_action_admin_notice']);
-
-        // Lock settings page
-        add_action('admin_menu', [$this, 'add_settings_page']);
-        add_action('admin_init', [$this, 'register_lock_settings']);
+        // Create feature instances (each registers its own hooks in constructor)
+        $this->tracker  = new User_History_Tracker($this);
+        $this->lock     = new User_History_Lock($this);
+        $this->admin    = new User_History_Admin($this);
+        $this->settings = new User_History_Settings();
     }
 
     /**
-     * Maybe upgrade database
+     * Maybe upgrade database.
      */
     private function maybe_upgrade() {
         $current_version = get_option('user_history_version', '0');
@@ -236,7 +169,7 @@ class User_History {
     }
 
     /**
-     * Migrate lock data from lock-user-account plugin (baba_user_locked meta key)
+     * Migrate lock data from lock-user-account plugin (baba_user_locked meta key).
      */
     private function maybe_migrate_lock_data() {
         if (get_option('user_history_migrated_lock')) {
@@ -261,854 +194,22 @@ class User_History {
         update_option('user_history_migrated_lock', '1');
     }
 
-    /**
-     * Capture old user data before update
-     */
-    public function capture_old_user_data($data, $update, $user_id, $userdata) {
-        if ($update && $user_id) {
-            $old_user = get_userdata($user_id);
-            if ($old_user) {
-                $this->old_user_data[$user_id] = $old_user;
-
-                // Capture meta too
-                foreach (array_keys($this->tracked_meta) as $meta_key) {
-                    $this->old_user_meta[$user_id][$meta_key] = get_user_meta($user_id, $meta_key, true);
-                }
-            }
-        }
-        return $data;
-    }
-
-    /**
-     * Placeholder for query-based capture (if needed)
-     */
-    public function capture_old_data_on_query($query) {
-        // Reserved for future use
-    }
-
-    /**
-     * Extend user search to include historical values
-     *
-     * When searching users in admin, also search through old_value in history table
-     * to find users by their previous usernames, emails, names, etc.
-     */
-    public function extend_user_search($query) {
-        global $wpdb, $pagenow;
-
-        // Only run on users.php admin page with a search
-        if (!is_admin() || $pagenow !== 'users.php') {
-            return;
-        }
-
-        // Check if there's a search term
-        $search = $query->get('search');
-        if (empty($search)) {
-            return;
-        }
-
-        // Remove the wildcard characters that WordPress adds
-        $search_term = trim($search, '*');
-        if (empty($search_term)) {
-            return;
-        }
-
-        $history_table = $wpdb->prefix . self::TABLE_NAME;
-
-        // Check if table exists (plugin may not be activated yet)
-        if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $history_table)) !== $history_table) {
-            return;
-        }
-
-        // Find user IDs that have matching old values in history
-        $user_ids_from_history = $wpdb->get_col(
-            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Table name is safely constructed from $wpdb->prefix
-            $wpdb->prepare(
-                "SELECT DISTINCT user_id FROM $history_table
-                WHERE old_value LIKE %s
-                AND field_name IN ('user_login', 'user_email', 'first_name', 'last_name', 'display_name', 'nickname')",
-                '%' . $wpdb->esc_like($search_term) . '%'
-            )
-        );
-
-        if (empty($user_ids_from_history)) {
-            return;
-        }
-
-        // Add these user IDs to the search results by modifying the WHERE clause
-        // We inject an OR condition: (original search conditions) OR (ID IN history matches)
-        $ids_list = implode(',', array_map('intval', $user_ids_from_history));
-
-        // Append our condition to include users found in history
-        $query->query_where .= " OR {$wpdb->users}.ID IN ($ids_list)";
-    }
-
-    /**
-     * Capture old meta value before update
-     */
-    public function capture_old_meta($meta_id, $user_id, $meta_key, $meta_value) {
-        if (isset($this->tracked_meta[$meta_key])) {
-            if (!isset($this->old_user_meta[$user_id])) {
-                $this->old_user_meta[$user_id] = [];
-            }
-            $this->old_user_meta[$user_id][$meta_key] = get_user_meta($user_id, $meta_key, true);
-        }
-    }
-
-    /**
-     * Log user profile changes
-     */
-    public function log_user_changes($user_id, $old_user_data_param, $userdata) {
-        // Get the old data we captured
-        $old_user = isset($this->old_user_data[$user_id]) ? $this->old_user_data[$user_id] : $old_user_data_param;
-
-        if (!$old_user) {
-            return;
-        }
-
-        $changed_by = get_current_user_id();
-
-        // Compare tracked fields
-        foreach ($this->tracked_fields as $field => $label) {
-            $old_value = '';
-            $new_value = '';
-
-            if ($field === 'user_pass') {
-                // Only log when password actually changed (new hash differs from old hash)
-                // Never log any password values - just the event
-                $old_pass = '';
-                if (is_object($old_user) && isset($old_user->user_pass)) {
-                    $old_pass = $old_user->user_pass;
-                } elseif (is_object($old_user) && isset($old_user->data->user_pass)) {
-                    $old_pass = $old_user->data->user_pass;
-                }
-
-                $new_pass = isset($userdata['user_pass']) ? $userdata['user_pass'] : '';
-
-                // Only log if password hash actually changed
-                if (!empty($new_pass) && $old_pass !== $new_pass) {
-                    $this->log_change($user_id, $changed_by, $field, $label, '', '', 'update');
-                }
-                continue;
-            }
-
-            // Get old value
-            if (is_object($old_user) && isset($old_user->$field)) {
-                $old_value = $old_user->$field;
-            } elseif (is_object($old_user) && isset($old_user->data->$field)) {
-                $old_value = $old_user->data->$field;
-            }
-
-            // Get new value
-            if (isset($userdata[$field])) {
-                $new_value = $userdata[$field];
-            } else {
-                // Fetch current value from database
-                $current_user = get_userdata($user_id);
-                if ($current_user && isset($current_user->$field)) {
-                    $new_value = $current_user->$field;
-                }
-            }
-
-            // Log if changed
-            if ($old_value !== $new_value) {
-                $this->log_change($user_id, $changed_by, $field, $label, $old_value, $new_value, 'update');
-            }
-        }
-
-        // Clean up
-        unset($this->old_user_data[$user_id]);
-    }
-
-    /**
-     * Log meta field change
-     */
-    public function log_meta_change($meta_id, $user_id, $meta_key, $meta_value) {
-        if (!isset($this->tracked_meta[$meta_key])) {
-            return;
-        }
-
-        $old_value = isset($this->old_user_meta[$user_id][$meta_key])
-            ? $this->old_user_meta[$user_id][$meta_key]
-            : '';
-
-        // Handle role/capabilities specially - defer to shutdown to capture final state
-        if ($meta_key === $this->capabilities_key) {
-            // Skip if already logged by set_user_role hook
-            if (isset($this->role_logged[$user_id])) {
-                return;
-            }
-
-            // Store old value for later comparison at shutdown
-            // Only store if not already pending (first change captures original state)
-            if (!isset($this->pending_role_changes[$user_id])) {
-                $this->pending_role_changes[$user_id] = [
-                    'old_value'  => $this->format_capabilities($old_value),
-                    'changed_by' => get_current_user_id(),
-                ];
-            }
-            return;
-        }
-
-        // Only log if actually changed
-        if ($old_value !== $meta_value) {
-            $this->log_change(
-                $user_id,
-                get_current_user_id(),
-                $meta_key,
-                $this->tracked_meta[$meta_key],
-                is_array($old_value) ? wp_json_encode($old_value) : $old_value,
-                is_array($meta_value) ? wp_json_encode($meta_value) : $meta_value,
-                'update'
-            );
-        }
-
-        // Clean up
-        if (isset($this->old_user_meta[$user_id][$meta_key])) {
-            unset($this->old_user_meta[$user_id][$meta_key]);
-        }
-    }
-
-    /**
-     * Format capabilities array to readable string
-     */
-    private function format_capabilities($caps) {
-        if (is_string($caps)) {
-            $caps = maybe_unserialize($caps);
-        }
-
-        if (!is_array($caps)) {
-            return '';
-        }
-
-        $roles = array_keys(array_filter($caps));
-        return implode(', ', $roles);
-    }
-
-    /**
-     * Log role change (fires when set_role() is called)
-     *
-     * @param int    $user_id   The user ID
-     * @param string $role      The new role
-     * @param array  $old_roles The old roles
-     */
-    public function log_role_change($user_id, $role, $old_roles) {
-        // Skip if already logged by updated_user_meta hook
-        if (isset($this->role_logged[$user_id])) {
-            return;
-        }
-
-        $old_role = !empty($old_roles) ? implode(', ', $old_roles) : '';
-        $new_role = $role;
-
-        // Only log if actually changed
-        if ($old_role === $new_role) {
-            return;
-        }
-
-        // Mark as logged to prevent duplicate from updated_user_meta
-        $this->role_logged[$user_id] = true;
-
-        $this->log_change(
-            $user_id,
-            get_current_user_id(),
-            $this->capabilities_key,
-            'Role',
-            $old_role,
-            $new_role,
-            'update'
-        );
-    }
-
-    /**
-     * Log pending role changes at shutdown
-     *
-     * This ensures we capture the final state after plugins like Members
-     * have finished all their role modifications.
-     */
-    public function log_pending_role_changes() {
-        foreach ($this->pending_role_changes as $user_id => $data) {
-            // Skip if already logged by set_user_role hook
-            if (isset($this->role_logged[$user_id])) {
-                continue;
-            }
-
-            // Get the current (final) capabilities
-            $current_caps = get_user_meta($user_id, $this->capabilities_key, true);
-            $new_value = $this->format_capabilities($current_caps);
-
-            // Only log if actually changed
-            if ($data['old_value'] !== $new_value) {
-                $this->log_change(
-                    $user_id,
-                    $data['changed_by'],
-                    $this->capabilities_key,
-                    'Role',
-                    $data['old_value'],
-                    $new_value,
-                    'update'
-                );
-            }
-        }
-    }
-
-    /**
-     * Log new user creation
-     */
-    public function log_user_creation($user_id, $userdata = []) {
-        $user = get_userdata($user_id);
-        if (!$user) {
-            return;
-        }
-
-        $changed_by = get_current_user_id() ?: $user_id;
-
-        $this->log_change(
-            $user_id,
-            $changed_by,
-            'user_created',
-            'Account Created',
-            '',
-            $user->user_email,
-            'create'
-        );
-    }
-
     // =========================================================================
-    // User Lock/Unlock Feature
+    // Shared Database Methods (used by Tracker, Lock, and Admin classes)
     // =========================================================================
 
     /**
-     * Check if a user account is locked
-     */
-    public function is_user_locked($user_id) {
-        return get_user_meta($user_id, self::LOCKED_META_KEY, true) === '1';
-    }
-
-    /**
-     * Lock a user account
-     */
-    public function lock_user($user_id) {
-        $user = get_userdata($user_id);
-        if (!$user) {
-            return false;
-        }
-
-        if ($user_id === get_current_user_id()) {
-            return new WP_Error('self_lock', __('You cannot lock your own account.', 'user-history'));
-        }
-
-        if (is_multisite() && is_super_admin($user_id)) {
-            return new WP_Error('super_admin_lock', __('Super admins cannot be locked.', 'user-history'));
-        }
-
-        if ($this->is_user_locked($user_id)) {
-            return true;
-        }
-
-        update_user_meta($user_id, self::LOCKED_META_KEY, '1');
-
-        // Destroy all sessions immediately
-        $sessions = WP_Session_Tokens::get_instance($user_id);
-        $sessions->destroy_all();
-
-        $this->log_change($user_id, get_current_user_id(), 'account_locked', 'Account Locked', '', 'Locked', 'lock');
-
-        return true;
-    }
-
-    /**
-     * Unlock a user account
-     */
-    public function unlock_user($user_id) {
-        $user = get_userdata($user_id);
-        if (!$user) {
-            return false;
-        }
-
-        if (!$this->is_user_locked($user_id)) {
-            return true;
-        }
-
-        update_user_meta($user_id, self::LOCKED_META_KEY, '');
-
-        $this->log_change($user_id, get_current_user_id(), 'account_locked', 'Account Unlocked', 'Locked', '', 'unlock');
-
-        return true;
-    }
-
-    /**
-     * Get the locked account error message
-     */
-    private function get_locked_message() {
-        $message = get_option('user_history_locked_message', '');
-
-        // Fall back to old lock-user-account plugin option
-        if (empty($message)) {
-            $message = get_option('baba_locked_message', '');
-        }
-
-        if (empty($message)) {
-            $message = __('Your account has been locked. Please contact the administrator.', 'user-history');
-        }
-
-        return $message;
-    }
-
-    /**
-     * Block locked users from authenticating (all methods including app passwords)
+     * Insert a change log entry.
      *
-     * @param WP_User|WP_Error $user
-     * @param string $username
-     * @param string $password
-     * @return WP_User|WP_Error
+     * @param int    $user_id     User ID.
+     * @param int    $changed_by  ID of user who made the change.
+     * @param string $field_name  Database field name.
+     * @param string $field_label Human-readable label.
+     * @param string $old_value   Old value.
+     * @param string $new_value   New value.
+     * @param string $change_type Change type (update, create, lock, unlock).
      */
-    public function block_locked_user_auth($user, $username, $password) {
-        if (!($user instanceof WP_User)) {
-            return $user;
-        }
-
-        if ($this->is_user_locked($user->ID)) {
-            return new WP_Error('user_locked', $this->get_locked_message());
-        }
-
-        return $user;
-    }
-
-    /**
-     * Block locked users from using application passwords
-     *
-     * @param WP_Error $error
-     * @param WP_User $user
-     */
-    public function block_locked_user_app_password($error, $user) {
-        if ($this->is_user_locked($user->ID)) {
-            $error->add('user_locked', $this->get_locked_message());
-        }
-    }
-
-    /**
-     * Invalidate sessions for locked users on any request
-     *
-     * @param int|false $user_id
-     * @return int|false
-     */
-    public function block_locked_user_session($user_id) {
-        if (!$user_id) {
-            return $user_id;
-        }
-
-        // Allow WP-CLI access for locked admins
-        if (defined('WP_CLI') && WP_CLI) {
-            return $user_id;
-        }
-
-        if ($this->is_user_locked($user_id)) {
-            return false;
-        }
-
-        return $user_id;
-    }
-
-    /**
-     * AJAX handler for lock/unlock toggle
-     */
-    public function ajax_toggle_lock() {
-        check_ajax_referer('user_history_lock', 'nonce');
-
-        if (!current_user_can('edit_users')) {
-            wp_send_json_error(['message' => __('Unauthorized', 'user-history')]);
-        }
-
-        $user_id = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
-        $action  = isset($_POST['lock_action']) ? sanitize_key($_POST['lock_action']) : '';
-
-        if (!$user_id || !in_array($action, ['lock', 'unlock'], true)) {
-            wp_send_json_error(['message' => __('Invalid request.', 'user-history')]);
-        }
-
-        if ($action === 'lock') {
-            $result = $this->lock_user($user_id);
-        } else {
-            $result = $this->unlock_user($user_id);
-        }
-
-        if (is_wp_error($result)) {
-            wp_send_json_error(['message' => $result->get_error_message()]);
-        }
-
-        $is_locked = $this->is_user_locked($user_id);
-
-        wp_send_json_success([
-            'message'  => $action === 'lock'
-                ? __('Account locked. All sessions have been destroyed.', 'user-history')
-                : __('Account unlocked.', 'user-history'),
-            'isLocked' => $is_locked,
-        ]);
-    }
-
-    /**
-     * Display lock/unlock section on user edit page
-     */
-    public function display_lock_user_section($user) {
-        if (!current_user_can('edit_users')) {
-            return;
-        }
-
-        // Don't show on own profile
-        if ($user->ID === get_current_user_id()) {
-            return;
-        }
-
-        // Don't show for super admins on multisite
-        if (is_multisite() && is_super_admin($user->ID)) {
-            return;
-        }
-
-        $is_locked = $this->is_user_locked($user->ID);
-        ?>
-        <div class="user-history-section user-history-lock-section">
-            <h2><?php esc_html_e('Account Status', 'user-history'); ?></h2>
-            <p class="description">
-                <?php esc_html_e('Lock this account to prevent the user from logging in.', 'user-history'); ?>
-            </p>
-            <p class="user-history-lock-status">
-                <?php if ($is_locked): ?>
-                    <span class="user-history-lock-badge locked"><?php esc_html_e('Locked', 'user-history'); ?></span>
-                <?php else: ?>
-                    <span class="user-history-lock-badge active"><?php esc_html_e('Active', 'user-history'); ?></span>
-                <?php endif; ?>
-            </p>
-            <p>
-                <button type="button" class="button <?php echo $is_locked ? '' : 'button-link-delete'; ?>" id="user-history-lock-toggle"
-                        data-user-id="<?php echo esc_attr($user->ID); ?>"
-                        data-locked="<?php echo $is_locked ? 'yes' : 'no'; ?>">
-                    <?php echo $is_locked
-                        ? esc_html__('Unlock Account', 'user-history')
-                        : esc_html__('Lock Account', 'user-history'); ?>
-                </button>
-                <span class="user-history-lock-message"></span>
-            </p>
-        </div>
-        <?php
-    }
-
-    // =========================================================================
-    // Users List - Lock Column, Bulk Actions, Filter
-    // =========================================================================
-
-    /**
-     * Add "Status" column to users list
-     */
-    public function add_locked_column($columns) {
-        $new_columns = [];
-        foreach ($columns as $key => $value) {
-            $new_columns[$key] = $value;
-            if ($key === 'role') {
-                $new_columns['user_locked'] = __('Status', 'user-history');
-            }
-        }
-        return $new_columns;
-    }
-
-    /**
-     * Render the locked column content
-     */
-    public function render_locked_column($output, $column_name, $user_id) {
-        if ($column_name !== 'user_locked') {
-            return $output;
-        }
-
-        if ($this->is_user_locked($user_id)) {
-            return '<span class="user-history-lock-badge locked">' . esc_html__('Locked', 'user-history') . '</span>';
-        }
-
-        return '&mdash;';
-    }
-
-    /**
-     * Add lock/unlock row action to users list
-     */
-    public function add_lock_row_action($actions, $user_object) {
-        if (!current_user_can('edit_users')) {
-            return $actions;
-        }
-
-        // Don't show for own account
-        if ($user_object->ID === get_current_user_id()) {
-            return $actions;
-        }
-
-        // Don't show for super admins on multisite
-        if (is_multisite() && is_super_admin($user_object->ID)) {
-            return $actions;
-        }
-
-        $is_locked = $this->is_user_locked($user_object->ID);
-
-        if ($is_locked) {
-            $url = wp_nonce_url(
-                add_query_arg([
-                    'action'  => 'user_history_unlock',
-                    'user'    => $user_object->ID,
-                ], admin_url('users.php')),
-                'user_history_lock_' . $user_object->ID
-            );
-            $actions['unlock'] = '<a href="' . esc_url($url) . '">' . esc_html__('Unlock', 'user-history') . '</a>';
-        } else {
-            $url = wp_nonce_url(
-                add_query_arg([
-                    'action'  => 'user_history_lock',
-                    'user'    => $user_object->ID,
-                ], admin_url('users.php')),
-                'user_history_lock_' . $user_object->ID
-            );
-            $actions['lock'] = '<a href="' . esc_url($url) . '">' . esc_html__('Lock', 'user-history') . '</a>';
-        }
-
-        return $actions;
-    }
-
-    /**
-     * Process lock/unlock row action from users list
-     */
-    public function process_lock_row_action() {
-        global $pagenow;
-
-        if ($pagenow !== 'users.php') {
-            return;
-        }
-
-        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Nonce verified below with check_admin_referer
-        $action = isset($_GET['action']) ? sanitize_key($_GET['action']) : '';
-
-        if (!in_array($action, ['user_history_lock', 'user_history_unlock'], true)) {
-            return;
-        }
-
-        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Nonce verified below with check_admin_referer
-        $user_id = isset($_GET['user']) ? (int) $_GET['user'] : 0;
-
-        if (!$user_id) {
-            return;
-        }
-
-        check_admin_referer('user_history_lock_' . $user_id);
-
-        if ($action === 'user_history_lock') {
-            $this->lock_user($user_id);
-        } else {
-            $this->unlock_user($user_id);
-        }
-
-        wp_safe_redirect(remove_query_arg(['action', 'user', '_wpnonce'], wp_get_referer() ?: admin_url('users.php')));
-        exit;
-    }
-
-    /**
-     * Add lock/unlock bulk actions
-     */
-    public function add_lock_bulk_actions($actions) {
-        $actions['lock_users']   = __('Lock', 'user-history');
-        $actions['unlock_users'] = __('Unlock', 'user-history');
-        return $actions;
-    }
-
-    /**
-     * Handle lock/unlock bulk actions
-     */
-    public function handle_lock_bulk_actions($redirect_url, $action, $user_ids) {
-        if (!in_array($action, ['lock_users', 'unlock_users'], true)) {
-            return $redirect_url;
-        }
-
-        $count = 0;
-        foreach ($user_ids as $user_id) {
-            $user_id = (int) $user_id;
-
-            if ($action === 'lock_users') {
-                $result = $this->lock_user($user_id);
-            } else {
-                $result = $this->unlock_user($user_id);
-            }
-
-            if ($result === true) {
-                $count++;
-            }
-        }
-
-        return add_query_arg([
-            'user_history_lock_action' => $action,
-            'user_history_lock_count'  => $count,
-        ], $redirect_url);
-    }
-
-    /**
-     * Show admin notice after bulk lock/unlock
-     */
-    public function lock_bulk_action_admin_notice() {
-        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading action result from URL, value is sanitized
-        $action = isset($_GET['user_history_lock_action']) ? sanitize_key($_GET['user_history_lock_action']) : '';
-        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading count from URL, value is cast to int
-        $count  = isset($_GET['user_history_lock_count']) ? (int) $_GET['user_history_lock_count'] : 0;
-
-        if (empty($action) || !$count) {
-            return;
-        }
-
-        if ($action === 'lock_users') {
-            $message = sprintf(
-                _n('%d user locked.', '%d users locked.', $count, 'user-history'),
-                $count
-            );
-        } else {
-            $message = sprintf(
-                _n('%d user unlocked.', '%d users unlocked.', $count, 'user-history'),
-                $count
-            );
-        }
-
-        printf('<div class="notice notice-success is-dismissible"><p>%s</p></div>', esc_html($message));
-    }
-
-    /**
-     * Add "Locked" filter view to users list
-     */
-    public function add_locked_users_view($views) {
-        global $wpdb;
-
-        $count = (int) $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT COUNT(DISTINCT user_id) FROM {$wpdb->usermeta} WHERE meta_key = %s AND meta_value = %s",
-                self::LOCKED_META_KEY,
-                '1'
-            )
-        );
-
-        if (!$count) {
-            return $views;
-        }
-
-        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading filter from URL, value is sanitized
-        $current_filter = isset($_GET['user_history_filter']) ? sanitize_key($_GET['user_history_filter']) : '';
-        $class = ($current_filter === 'locked') ? 'current' : '';
-
-        $views['locked'] = sprintf(
-            '<a href="%s" class="%s">%s <span class="count">(%d)</span></a>',
-            esc_url(add_query_arg('user_history_filter', 'locked', admin_url('users.php'))),
-            $class,
-            esc_html__('Locked', 'user-history'),
-            $count
-        );
-
-        return $views;
-    }
-
-    /**
-     * Filter users list query for locked users view
-     */
-    public function filter_locked_users_query($query) {
-        global $pagenow;
-
-        if (!is_admin() || $pagenow !== 'users.php') {
-            return;
-        }
-
-        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading filter from URL, value is sanitized
-        $filter = isset($_GET['user_history_filter']) ? sanitize_key($_GET['user_history_filter']) : '';
-
-        if ($filter === 'locked') {
-            $query->set('meta_key', self::LOCKED_META_KEY);
-            $query->set('meta_value', '1');
-        }
-    }
-
-    // =========================================================================
-    // Lock Settings
-    // =========================================================================
-
-    /**
-     * Add settings page under Settings menu
-     */
-    public function add_settings_page() {
-        add_options_page(
-            __('User History', 'user-history'),
-            __('User History', 'user-history'),
-            'manage_options',
-            'user-history',
-            [$this, 'render_settings_page']
-        );
-    }
-
-    /**
-     * Register settings
-     */
-    public function register_lock_settings() {
-        register_setting('user_history_settings', 'user_history_locked_message', [
-            'type'              => 'string',
-            'sanitize_callback' => 'sanitize_text_field',
-            'default'           => '',
-        ]);
-
-        add_settings_section(
-            'user_history_lock_section',
-            __('Lock Account', 'user-history'),
-            [$this, 'render_lock_section_description'],
-            'user-history'
-        );
-
-        add_settings_field(
-            'user_history_locked_message',
-            __('Locked Account Message', 'user-history'),
-            [$this, 'render_locked_message_field'],
-            'user-history',
-            'user_history_lock_section'
-        );
-    }
-
-    /**
-     * Render the lock settings section description
-     */
-    public function render_lock_section_description() {
-        echo '<p>' . esc_html__('Configure the message shown when a locked user tries to log in.', 'user-history') . '</p>';
-    }
-
-    /**
-     * Render the locked message settings field
-     */
-    public function render_locked_message_field() {
-        $value = get_option('user_history_locked_message', '');
-        ?>
-        <input type="text" name="user_history_locked_message" class="regular-text"
-               value="<?php echo esc_attr($value); ?>"
-               placeholder="<?php echo esc_attr__('Your account has been locked. Please contact the administrator.', 'user-history'); ?>" />
-        <p class="description">
-            <?php esc_html_e('This message is displayed on the login screen when a locked user attempts to log in. Leave empty to use the default message.', 'user-history'); ?>
-        </p>
-        <?php
-    }
-
-    /**
-     * Render the settings page
-     */
-    public function render_settings_page() {
-        ?>
-        <div class="wrap">
-            <h1><?php esc_html_e('User History Settings', 'user-history'); ?></h1>
-            <form method="post" action="options.php">
-                <?php
-                settings_fields('user_history_settings');
-                do_settings_sections('user-history');
-                submit_button();
-                ?>
-            </form>
-        </div>
-        <?php
-    }
-
-    /**
-     * Insert a change log entry
-     */
-    private function log_change($user_id, $changed_by, $field_name, $field_label, $old_value, $new_value, $change_type = 'update') {
+    public function log_change($user_id, $changed_by, $field_name, $field_label, $old_value, $new_value, $change_type = 'update') {
         global $wpdb;
 
         $table_name = $wpdb->prefix . self::TABLE_NAME;
@@ -1130,7 +231,12 @@ class User_History {
     }
 
     /**
-     * Get history for a user
+     * Get history for a user.
+     *
+     * @param int $user_id User ID.
+     * @param int $limit   Number of entries.
+     * @param int $offset  Offset.
+     * @return array
      */
     public function get_user_history($user_id, $limit = 50, $offset = 0) {
         global $wpdb;
@@ -1154,7 +260,10 @@ class User_History {
     }
 
     /**
-     * Get total history count for a user
+     * Get total history count for a user.
+     *
+     * @param int $user_id User ID.
+     * @return int
      */
     public function get_user_history_count($user_id) {
         global $wpdb;
@@ -1168,453 +277,6 @@ class User_History {
                 $user_id
             )
         );
-    }
-
-    /**
-     * Enqueue admin assets
-     */
-    public function enqueue_admin_assets($hook) {
-        // Load CSS on users list page for lock badge column
-        if ($hook === 'users.php') {
-            wp_enqueue_style(
-                'user-history-admin',
-                USER_HISTORY_PLUGIN_URL . 'assets/css/admin.css',
-                [],
-                USER_HISTORY_VERSION
-            );
-            return;
-        }
-
-        if (!in_array($hook, ['user-edit.php', 'profile.php'])) {
-            return;
-        }
-
-        wp_enqueue_style(
-            'user-history-admin',
-            USER_HISTORY_PLUGIN_URL . 'assets/css/admin.css',
-            [],
-            USER_HISTORY_VERSION
-        );
-
-        wp_enqueue_script(
-            'user-history-admin',
-            USER_HISTORY_PLUGIN_URL . 'assets/js/admin.js',
-            ['jquery'],
-            USER_HISTORY_VERSION,
-            true
-        );
-
-        // Get user ID from URL or current user
-        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Nonce not required for reading user_id, value is cast to int
-        $user_id = isset($_GET['user_id']) ? (int) $_GET['user_id'] : get_current_user_id();
-
-        wp_localize_script('user-history-admin', 'userHistoryData', [
-            'ajaxUrl' => admin_url('admin-ajax.php'),
-            'nonce'   => wp_create_nonce('user_history_nonce'),
-            'changeUsernameNonce' => wp_create_nonce('user_history_change_username'),
-            'clearHistoryNonce' => wp_create_nonce('user_history_clear'),
-            'lockNonce' => wp_create_nonce('user_history_lock'),
-            'userId'  => $user_id,
-            'i18n'    => [
-                'change'        => __('Change', 'user-history'),
-                'cancel'        => __('Cancel', 'user-history'),
-                'pleaseWait'    => __('Please wait...', 'user-history'),
-                'errorGeneric'  => __('Something went wrong. Please try again.', 'user-history'),
-                'confirmClear'  => __('Are you sure you want to clear all history for this user? This cannot be undone.', 'user-history'),
-                'clearing'      => __('Clearing...', 'user-history'),
-                'clearLog'      => __('Clear Log', 'user-history'),
-                'lockAccount'   => __('Lock Account', 'user-history'),
-                'unlockAccount' => __('Unlock Account', 'user-history'),
-                'confirmLock'   => __('Are you sure you want to lock this user? They will be logged out immediately.', 'user-history'),
-                'confirmUnlock' => __('Are you sure you want to unlock this user?', 'user-history'),
-            ],
-        ]);
-    }
-
-    /**
-     * Display history section on user edit page
-     */
-    public function display_history_section($user) {
-        // Only show to admins
-        if (!current_user_can('edit_users')) {
-            return;
-        }
-
-        $history = $this->get_user_history($user->ID, 20);
-        $total_count = $this->get_user_history_count($user->ID);
-        ?>
-        <div class="user-history-section">
-            <h2><?php esc_html_e('Account History', 'user-history'); ?></h2>
-            <p class="description">
-                <?php esc_html_e('A log of changes made to this account.', 'user-history'); ?>
-                <?php if ($total_count > 0): ?>
-                    <span class="user-history-count">
-                        <?php printf(
-                            esc_html(_n('%d change recorded', '%d changes recorded', $total_count, 'user-history')),
-                            (int) $total_count
-                        ); ?>
-                    </span>
-                <?php endif; ?>
-            </p>
-
-            <div class="user-history-log" id="user-history-log" data-user-id="<?php echo esc_attr($user->ID); ?>">
-                <?php if (empty($history)): ?>
-                    <p class="user-history-empty">
-                        <?php esc_html_e('No changes have been recorded yet.', 'user-history'); ?>
-                    </p>
-                <?php else: ?>
-                    <table class="widefat user-history-table">
-                        <thead>
-                            <tr>
-                                <th class="column-date"><?php esc_html_e('Date', 'user-history'); ?></th>
-                                <th class="column-field"><?php esc_html_e('Field', 'user-history'); ?></th>
-                                <th class="column-change"><?php esc_html_e('Change', 'user-history'); ?></th>
-                                <th class="column-by"><?php esc_html_e('Changed By', 'user-history'); ?></th>
-                            </tr>
-                        </thead>
-                        <tbody id="user-history-tbody">
-                            <?php
-                            // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Output is escaped in render_history_rows()
-                            echo $this->render_history_rows($history);
-                            ?>
-                        </tbody>
-                    </table>
-
-                    <div class="user-history-actions">
-                        <?php if ($total_count > 20): ?>
-                            <button type="button" class="button" id="user-history-load-more"
-                                    data-offset="20" data-total="<?php echo esc_attr($total_count); ?>">
-                                <?php esc_html_e('Load More', 'user-history'); ?>
-                            </button>
-                        <?php endif; ?>
-                        <button type="button" class="button user-history-clear-log" id="user-history-clear-log">
-                            <?php esc_html_e('Clear Log', 'user-history'); ?>
-                        </button>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </div>
-        <?php
-    }
-
-    /**
-     * Display delete user button on user edit page
-     */
-    public function display_delete_user_button($user) {
-        // Only show to users who can delete users
-        if (!current_user_can('delete_users')) {
-            return;
-        }
-
-        // Don't allow deleting yourself
-        if ($user->ID === get_current_user_id()) {
-            return;
-        }
-
-        // Don't show for super admins on multisite (they can't be deleted this way)
-        if (is_multisite() && is_super_admin($user->ID)) {
-            return;
-        }
-
-        $delete_url = wp_nonce_url(
-            admin_url('users.php?action=delete&user=' . $user->ID),
-            'bulk-users'
-        );
-        ?>
-        <div class="user-history-section user-history-delete-section">
-            <h2><?php esc_html_e('Delete User', 'user-history'); ?></h2>
-            <p class="description">
-                <?php esc_html_e('Permanently delete this user account. You will be able to reassign their content to another user.', 'user-history'); ?>
-            </p>
-            <p>
-                <a href="<?php echo esc_url($delete_url); ?>" class="button button-link-delete">
-                    <?php esc_html_e('Delete User', 'user-history'); ?>
-                </a>
-            </p>
-        </div>
-        <?php
-    }
-
-    /**
-     * Render history table rows
-     */
-    public function render_history_rows($history) {
-        $output = '';
-
-        foreach ($history as $entry) {
-            $changed_by_user = get_userdata($entry->changed_by);
-            $changed_by_name = $changed_by_user ? $changed_by_user->display_name : __('Unknown', 'user-history');
-            $changed_by_link = $changed_by_user ? get_edit_user_link($entry->changed_by) : '#';
-
-            $is_self = ($entry->user_id == $entry->changed_by);
-
-            $output .= '<tr class="user-history-entry type-' . esc_attr($entry->change_type) . '">';
-
-            // Date column
-            $output .= '<td class="column-date">';
-            $output .= '<span class="history-date">' . esc_html(date_i18n(get_option('date_format'), strtotime($entry->created_at))) . '</span>';
-            $output .= '<span class="history-time">' . esc_html(date_i18n(get_option('time_format'), strtotime($entry->created_at))) . '</span>';
-            $output .= '</td>';
-
-            // Field column
-            $output .= '<td class="column-field">';
-            $output .= '<strong>' . esc_html($entry->field_label) . '</strong>';
-            $output .= '</td>';
-
-            // Change column
-            $output .= '<td class="column-change">';
-            if ($entry->change_type === 'create') {
-                $output .= '<span class="history-new-value">' . esc_html($entry->new_value) . '</span>';
-            } elseif ($entry->field_name === 'account_locked') {
-                $output .= '<span class="history-new-value">' . esc_html($entry->field_label) . '</span>';
-            } elseif ($entry->field_name === 'user_pass') {
-                // Password changes just show "Changed" - no values ever stored
-                $output .= '<span class="history-new-value">' . esc_html__('Changed', 'user-history') . '</span>';
-            } else {
-                if (!empty($entry->old_value)) {
-                    $output .= '<span class="history-old-value">' . esc_html($this->truncate_value($entry->old_value)) . '</span>';
-                    $output .= ' <span class="history-arrow">&rarr;</span> ';
-                }
-                $output .= '<span class="history-new-value">' . esc_html($this->truncate_value($entry->new_value)) . '</span>';
-            }
-            $output .= '</td>';
-
-            // Changed by column
-            $output .= '<td class="column-by">';
-            if ($is_self) {
-                $output .= '<span class="history-self">' . esc_html__('Self', 'user-history') . '</span>';
-            } else {
-                $output .= '<a href="' . esc_url($changed_by_link) . '">' . esc_html($changed_by_name) . '</a>';
-            }
-            $output .= '</td>';
-
-            $output .= '</tr>';
-        }
-
-        return $output;
-    }
-
-    /**
-     * Truncate long values for display
-     */
-    private function truncate_value($value, $length = 50) {
-        if (strlen($value) <= $length) {
-            return $value;
-        }
-        return substr($value, 0, $length) . '...';
-    }
-
-    /**
-     * AJAX handler for loading more history
-     */
-    public function ajax_load_more_history() {
-        check_ajax_referer('user_history_nonce', 'nonce');
-
-        if (!current_user_can('edit_users')) {
-            wp_send_json_error(['message' => 'Unauthorized']);
-        }
-
-        $user_id = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
-        $offset = isset($_POST['offset']) ? (int) $_POST['offset'] : 0;
-
-        if (!$user_id) {
-            wp_send_json_error(['message' => 'Invalid user ID']);
-        }
-
-        $history = $this->get_user_history($user_id, 20, $offset);
-
-        if (empty($history)) {
-            wp_send_json_success(['html' => '', 'hasMore' => false]);
-        }
-
-        $html = $this->render_history_rows($history);
-        $total = $this->get_user_history_count($user_id);
-        $has_more = ($offset + 20) < $total;
-
-        wp_send_json_success([
-            'html'    => $html,
-            'hasMore' => $has_more,
-            'newOffset' => $offset + 20,
-        ]);
-    }
-
-    /**
-     * AJAX handler for clearing user history
-     */
-    public function ajax_clear_history() {
-        check_ajax_referer('user_history_clear', 'nonce');
-
-        if (!current_user_can('edit_users')) {
-            wp_send_json_error(['message' => __('Unauthorized', 'user-history')]);
-        }
-
-        $user_id = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
-
-        if (!$user_id) {
-            wp_send_json_error(['message' => __('Invalid user ID', 'user-history')]);
-        }
-
-        global $wpdb;
-        $table_name = $wpdb->prefix . self::TABLE_NAME;
-
-        $deleted = $wpdb->delete(
-            $table_name,
-            ['user_id' => $user_id],
-            ['%d']
-        );
-
-        if ($deleted === false) {
-            wp_send_json_error(['message' => __('Failed to clear history', 'user-history')]);
-        }
-
-        wp_send_json_success([
-            'message' => __('History cleared successfully', 'user-history'),
-        ]);
-    }
-
-    /**
-     * AJAX handler for changing username
-     */
-    public function ajax_change_username() {
-        $response = [
-            'success'   => false,
-            'new_nonce' => wp_create_nonce('user_history_change_username'),
-        ];
-
-        // Check capability
-        if (!current_user_can('edit_users')) {
-            $response['message'] = __('You do not have permission to change usernames.', 'user-history');
-            wp_send_json($response);
-        }
-
-        // Validate nonce
-        if (!check_ajax_referer('user_history_change_username', '_ajax_nonce', false)) {
-            $response['message'] = __('Security check failed. Please refresh the page.', 'user-history');
-            wp_send_json($response);
-        }
-
-        // Validate request
-        if (empty($_POST['new_username']) || empty($_POST['current_username'])) {
-            $response['message'] = __('Invalid request.', 'user-history');
-            wp_send_json($response);
-        }
-
-        // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sanitize_user handles sanitization
-        $new_username = sanitize_user(trim(wp_unslash($_POST['new_username'])), true);
-        // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sanitize_user handles sanitization
-        $old_username = sanitize_user(trim(wp_unslash($_POST['current_username'])), true);
-
-        // Old username must exist
-        $user_id = username_exists($old_username);
-        if (!$user_id) {
-            $response['message'] = __('Invalid request.', 'user-history');
-            wp_send_json($response);
-        }
-
-        // If same username, nothing to do
-        if ($new_username === $old_username) {
-            $response['success'] = true;
-            $response['message'] = __('Username unchanged.', 'user-history');
-            wp_send_json($response);
-        }
-
-        // Validate username length
-        if (mb_strlen($new_username) < 3 || mb_strlen($new_username) > 60) {
-            $response['message'] = __('Username must be between 3 and 60 characters.', 'user-history');
-            wp_send_json($response);
-        }
-
-        // Validate username characters
-        if (!validate_username($new_username)) {
-            $response['message'] = __('This username contains invalid characters.', 'user-history');
-            wp_send_json($response);
-        }
-
-        // Check illegal logins (using WordPress core filter)
-        // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core WP filter
-        $illegal_logins = array_map('strtolower', (array) apply_filters('illegal_user_logins', []));
-        if (in_array(strtolower($new_username), $illegal_logins, true)) {
-            $response['message'] = __('Sorry, that username is not allowed.', 'user-history');
-            wp_send_json($response);
-        }
-
-        // Check if new username already exists
-        if (username_exists($new_username)) {
-            $response['message'] = sprintf(__('The username "%s" is already taken.', 'user-history'), $new_username);
-            wp_send_json($response);
-        }
-
-        // Change the username
-        $this->change_username($user_id, $old_username, $new_username);
-
-        $response['success'] = true;
-        $response['message'] = sprintf(__('Username changed to "%s".', 'user-history'), $new_username);
-        wp_send_json($response);
-    }
-
-    /**
-     * Change a user's username
-     */
-    private function change_username($user_id, $old_username, $new_username) {
-        global $wpdb;
-
-        // Log the change before making it
-        $this->log_change(
-            $user_id,
-            get_current_user_id(),
-            'user_login',
-            'Username',
-            $old_username,
-            $new_username,
-            'update'
-        );
-
-        // Update user_login
-        $wpdb->update(
-            $wpdb->users,
-            ['user_login' => $new_username],
-            ['ID' => $user_id],
-            ['%s'],
-            ['%d']
-        );
-
-        // Update user_nicename if it matches the old username
-        $wpdb->query($wpdb->prepare(
-            "UPDATE $wpdb->users SET user_nicename = %s WHERE ID = %d AND user_nicename = %s",
-            sanitize_title($new_username),
-            $user_id,
-            sanitize_title($old_username)
-        ));
-
-        // Update display_name if it matches the old username
-        $wpdb->query($wpdb->prepare(
-            "UPDATE $wpdb->users SET display_name = %s WHERE ID = %d AND display_name = %s",
-            $new_username,
-            $user_id,
-            $old_username
-        ));
-
-        // Handle multisite super admin
-        if (is_multisite()) {
-            $super_admins = (array) get_site_option('site_admins', ['admin']);
-            $key = array_search($old_username, $super_admins);
-            if ($key !== false) {
-                $super_admins[$key] = $new_username;
-                update_site_option('site_admins', $super_admins);
-            }
-        }
-
-        // Clear user cache
-        clean_user_cache($user_id);
-
-        /**
-         * Fires after a username has been changed
-         *
-         * @param int    $user_id      The user ID
-         * @param string $old_username The old username
-         * @param string $new_username The new username
-         */
-        do_action('user_history_username_changed', $user_id, $old_username, $new_username);
     }
 }
 
