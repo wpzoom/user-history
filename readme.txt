@@ -4,7 +4,7 @@ Tags: user history, user log, audit log, change username, user tracking
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.0.3
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -89,6 +89,9 @@ On the user edit page, scroll down to the Account History section and click the 
 3. Search results showing users found by previous email/username
 
 == Changelog ==
+
+= 1.1.0 =
+* Add Lock User functionality
 
 = 1.0.3 =
 * Added Delete User button on user edit page for quick access
