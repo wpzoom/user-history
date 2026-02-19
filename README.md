@@ -1,4 +1,4 @@
-# User History
+# WPZOOM User History
 
 A WordPress plugin that tracks changes made to user accounts and allows admins to change usernames.
 
