@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name: User History
+ * Plugin Name: WPZOOM User History
  * Plugin URI: https://github.com/wpzoom/user-history
  * Description: Tracks changes made to user accounts (name, email, username, etc.) and displays a history log on the user edit page.
  * Version: 1.1.0
@@ -8,7 +8,7 @@
  * Author URI: https://www.wpzoom.com
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain: user-history
+ * Text Domain: wpzoom-user-history
  * Requires at least: 6.0
  * Requires PHP: 7.4
  */
@@ -19,14 +19,14 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('USER_HISTORY_PLUGIN_DIR', plugin_dir_path(__FILE__));
-define('USER_HISTORY_PLUGIN_URL', plugin_dir_url(__FILE__));
-define('USER_HISTORY_VERSION', get_file_data(__FILE__, ['Version' => 'Version'])['Version']);
+define('WPZOOM_USER_HISTORY_PLUGIN_DIR', plugin_dir_path(__FILE__));
+define('WPZOOM_USER_HISTORY_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('WPZOOM_USER_HISTORY_VERSION', get_file_data(__FILE__, ['Version' => 'Version'])['Version']);
 
 /**
  * Main User History Class — Orchestrator + shared database layer.
  */
-class User_History {
+class WPZOOM_User_History {
 
     /**
      * Database table name (without prefix).
@@ -36,47 +36,47 @@ class User_History {
     /**
      * User meta key for lock status.
      */
-    const LOCKED_META_KEY = 'user_history_locked';
+    const LOCKED_META_KEY = 'wpzoom_user_history_locked';
 
     /**
      * Singleton instance.
      *
-     * @var User_History
+     * @var WPZOOM_User_History
      */
     private static $instance = null;
 
     /**
      * Change tracker instance.
      *
-     * @var User_History_Tracker
+     * @var WPZOOM_User_History_Tracker
      */
     public $tracker;
 
     /**
      * Lock feature instance.
      *
-     * @var User_History_Lock
+     * @var WPZOOM_User_History_Lock
      */
     public $lock;
 
     /**
      * Admin UI instance.
      *
-     * @var User_History_Admin
+     * @var WPZOOM_User_History_Admin
      */
     public $admin;
 
     /**
      * Settings instance.
      *
-     * @var User_History_Settings
+     * @var WPZOOM_User_History_Settings
      */
     public $settings;
 
     /**
      * Get singleton instance.
      *
-     * @return User_History
+     * @return WPZOOM_User_History
      */
     public static function get_instance() {
         if (null === self::$instance) {
@@ -101,7 +101,7 @@ class User_History {
      */
     public function activate() {
         $this->create_table();
-        update_option('user_history_version', USER_HISTORY_VERSION);
+        update_option('wpzoom_user_history_version', WPZOOM_USER_HISTORY_VERSION);
     }
 
     /**
@@ -143,28 +143,28 @@ class User_History {
         $this->maybe_upgrade();
 
         // Include feature classes
-        require_once USER_HISTORY_PLUGIN_DIR . 'includes/class-tracker.php';
-        require_once USER_HISTORY_PLUGIN_DIR . 'includes/class-lock.php';
-        require_once USER_HISTORY_PLUGIN_DIR . 'includes/class-admin.php';
-        require_once USER_HISTORY_PLUGIN_DIR . 'includes/class-settings.php';
+        require_once WPZOOM_USER_HISTORY_PLUGIN_DIR . 'includes/class-tracker.php';
+        require_once WPZOOM_USER_HISTORY_PLUGIN_DIR . 'includes/class-lock.php';
+        require_once WPZOOM_USER_HISTORY_PLUGIN_DIR . 'includes/class-admin.php';
+        require_once WPZOOM_USER_HISTORY_PLUGIN_DIR . 'includes/class-settings.php';
 
         // Create feature instances (each registers its own hooks in constructor)
-        $this->tracker  = new User_History_Tracker($this);
-        $this->lock     = new User_History_Lock($this);
-        $this->admin    = new User_History_Admin($this);
-        $this->settings = new User_History_Settings();
+        $this->tracker  = new WPZOOM_User_History_Tracker($this);
+        $this->lock     = new WPZOOM_User_History_Lock($this);
+        $this->admin    = new WPZOOM_User_History_Admin($this);
+        $this->settings = new WPZOOM_User_History_Settings();
     }
 
     /**
      * Maybe upgrade database.
      */
     private function maybe_upgrade() {
-        $current_version = get_option('user_history_version', '0');
+        $current_version = get_option('wpzoom_user_history_version', '0');
 
-        if (version_compare($current_version, USER_HISTORY_VERSION, '<')) {
+        if (version_compare($current_version, WPZOOM_USER_HISTORY_VERSION, '<')) {
             $this->create_table();
             $this->maybe_migrate_lock_data();
-            update_option('user_history_version', USER_HISTORY_VERSION);
+            update_option('wpzoom_user_history_version', WPZOOM_USER_HISTORY_VERSION);
         }
     }
 
@@ -172,7 +172,7 @@ class User_History {
      * Migrate lock data from lock-user-account plugin (baba_user_locked meta key).
      */
     private function maybe_migrate_lock_data() {
-        if (get_option('user_history_migrated_lock')) {
+        if (get_option('wpzoom_user_history_migrated_lock')) {
             return;
         }
 
@@ -191,7 +191,7 @@ class User_History {
             update_user_meta((int) $user_id, self::LOCKED_META_KEY, '1');
         }
 
-        update_option('user_history_migrated_lock', '1');
+        update_option('wpzoom_user_history_migrated_lock', '1');
     }
 
     // =========================================================================
@@ -281,4 +281,4 @@ class User_History {
 }
 
 // Initialize the plugin
-User_History::get_instance();
+WPZOOM_User_History::get_instance();

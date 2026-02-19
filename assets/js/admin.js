@@ -36,12 +36,12 @@
             $btn.addClass('loading').text('Loading...');
 
             $.ajax({
-                url: userHistoryData.ajaxUrl,
+                url: wpzoomUserHistoryData.ajaxUrl,
                 type: 'POST',
                 data: {
-                    action: 'load_more_user_history',
-                    nonce: userHistoryData.nonce,
-                    user_id: userHistoryData.userId,
+                    action: 'wpzoom_user_history_load_more',
+                    nonce: wpzoomUserHistoryData.nonce,
+                    user_id: wpzoomUserHistoryData.userId,
                     offset: offset
                 },
                 success: function(response) {
@@ -81,7 +81,7 @@
 
         // Create the change username UI
         var currentUsername = $usernameInput.val();
-        var i18n = userHistoryData.i18n || {};
+        var i18n = wpzoomUserHistoryData.i18n || {};
 
         var $changeLink = $('<a>', {
             href: '#',
@@ -177,18 +177,18 @@
             $newInput.prop('disabled', true);
 
             $.ajax({
-                url: userHistoryData.ajaxUrl,
+                url: wpzoomUserHistoryData.ajaxUrl,
                 type: 'POST',
                 data: {
-                    action: 'user_history_change_username',
-                    _ajax_nonce: userHistoryData.changeUsernameNonce,
+                    action: 'wpzoom_user_history_change_username',
+                    _ajax_nonce: wpzoomUserHistoryData.changeUsernameNonce,
                     current_username: oldUsername,
                     new_username: newUsername
                 },
                 success: function(response) {
                     // Update nonce for next request
                     if (response.new_nonce) {
-                        userHistoryData.changeUsernameNonce = response.new_nonce;
+                        wpzoomUserHistoryData.changeUsernameNonce = response.new_nonce;
                     }
 
                     if (response.success) {
@@ -230,7 +230,7 @@
             return;
         }
 
-        var i18n = userHistoryData.i18n || {};
+        var i18n = wpzoomUserHistoryData.i18n || {};
 
         $clearBtn.on('click', function(e) {
             e.preventDefault();
@@ -248,12 +248,12 @@
             $btn.addClass('loading').prop('disabled', true).text(i18n.clearing || 'Clearing...');
 
             $.ajax({
-                url: userHistoryData.ajaxUrl,
+                url: wpzoomUserHistoryData.ajaxUrl,
                 type: 'POST',
                 data: {
-                    action: 'clear_user_history',
-                    nonce: userHistoryData.clearHistoryNonce,
-                    user_id: userHistoryData.userId
+                    action: 'wpzoom_user_history_clear',
+                    nonce: wpzoomUserHistoryData.clearHistoryNonce,
+                    user_id: wpzoomUserHistoryData.userId
                 },
                 success: function(response) {
                     if (response.success) {
@@ -286,7 +286,7 @@
             return;
         }
 
-        var i18n = userHistoryData.i18n || {};
+        var i18n = wpzoomUserHistoryData.i18n || {};
 
         $btn.on('click', function(e) {
             e.preventDefault();
@@ -305,12 +305,12 @@
             $btn.prop('disabled', true).text(i18n.pleaseWait || 'Please wait...');
 
             $.ajax({
-                url: userHistoryData.ajaxUrl,
+                url: wpzoomUserHistoryData.ajaxUrl,
                 type: 'POST',
                 data: {
-                    action: 'user_history_toggle_lock',
-                    nonce: userHistoryData.lockNonce,
-                    user_id: userHistoryData.userId,
+                    action: 'wpzoom_user_history_toggle_lock',
+                    nonce: wpzoomUserHistoryData.lockNonce,
+                    user_id: wpzoomUserHistoryData.userId,
                     lock_action: action
                 },
                 success: function(response) {

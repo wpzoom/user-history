@@ -15,19 +15,19 @@ if (!defined('ABSPATH')) {
  * history loading/clearing, username changes, user search extension,
  * and the delete user button.
  */
-class User_History_Admin {
+class WPZOOM_User_History_Admin {
 
     /**
      * Reference to main plugin instance.
      *
-     * @var User_History
+     * @var WPZOOM_User_History
      */
     private $plugin;
 
     /**
      * Constructor — registers admin hooks.
      *
-     * @param User_History $plugin Main plugin instance.
+     * @param WPZOOM_User_History $plugin Main plugin instance.
      */
     public function __construct($plugin) {
         $this->plugin = $plugin;
@@ -42,9 +42,9 @@ class User_History_Admin {
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
 
         // AJAX handlers
-        add_action('wp_ajax_load_more_user_history', [$this, 'ajax_load_more_history']);
-        add_action('wp_ajax_user_history_change_username', [$this, 'ajax_change_username']);
-        add_action('wp_ajax_clear_user_history', [$this, 'ajax_clear_history']);
+        add_action('wp_ajax_wpzoom_user_history_load_more', [$this, 'ajax_load_more_history']);
+        add_action('wp_ajax_wpzoom_user_history_change_username', [$this, 'ajax_change_username']);
+        add_action('wp_ajax_wpzoom_user_history_clear', [$this, 'ajax_clear_history']);
 
         // Extend user search to include history
         add_action('pre_user_query', [$this, 'extend_user_search']);
@@ -66,17 +66,17 @@ class User_History_Admin {
         }
 
         wp_enqueue_style(
-            'user-history-admin',
-            USER_HISTORY_PLUGIN_URL . 'assets/css/admin.css',
+            'wpzoom-user-history-admin',
+            WPZOOM_USER_HISTORY_PLUGIN_URL . 'assets/css/admin.css',
             [],
-            USER_HISTORY_VERSION
+            WPZOOM_USER_HISTORY_VERSION
         );
 
         wp_enqueue_script(
-            'user-history-admin',
-            USER_HISTORY_PLUGIN_URL . 'assets/js/admin.js',
+            'wpzoom-user-history-admin',
+            WPZOOM_USER_HISTORY_PLUGIN_URL . 'assets/js/admin.js',
             ['jquery'],
-            USER_HISTORY_VERSION,
+            WPZOOM_USER_HISTORY_VERSION,
             true
         );
 
@@ -84,25 +84,25 @@ class User_History_Admin {
         // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Nonce not required for reading user_id, value is cast to int
         $user_id = isset($_GET['user_id']) ? (int) $_GET['user_id'] : get_current_user_id();
 
-        wp_localize_script('user-history-admin', 'userHistoryData', [
+        wp_localize_script('wpzoom-user-history-admin', 'wpzoomUserHistoryData', [
             'ajaxUrl' => admin_url('admin-ajax.php'),
-            'nonce'   => wp_create_nonce('user_history_nonce'),
-            'changeUsernameNonce' => wp_create_nonce('user_history_change_username'),
-            'clearHistoryNonce' => wp_create_nonce('user_history_clear'),
-            'lockNonce' => wp_create_nonce('user_history_lock'),
+            'nonce'   => wp_create_nonce('wpzoom_user_history_nonce'),
+            'changeUsernameNonce' => wp_create_nonce('wpzoom_user_history_change_username'),
+            'clearHistoryNonce' => wp_create_nonce('wpzoom_user_history_clear'),
+            'lockNonce' => wp_create_nonce('wpzoom_user_history_lock'),
             'userId'  => $user_id,
             'i18n'    => [
-                'change'        => __('Change', 'user-history'),
-                'cancel'        => __('Cancel', 'user-history'),
-                'pleaseWait'    => __('Please wait...', 'user-history'),
-                'errorGeneric'  => __('Something went wrong. Please try again.', 'user-history'),
-                'confirmClear'  => __('Are you sure you want to clear all history for this user? This cannot be undone.', 'user-history'),
-                'clearing'      => __('Clearing...', 'user-history'),
-                'clearLog'      => __('Clear Log', 'user-history'),
-                'lockAccount'   => __('Lock Account', 'user-history'),
-                'unlockAccount' => __('Unlock Account', 'user-history'),
-                'confirmLock'   => __('Are you sure you want to lock this user? They will be logged out immediately.', 'user-history'),
-                'confirmUnlock' => __('Are you sure you want to unlock this user?', 'user-history'),
+                'change'        => __('Change', 'wpzoom-user-history'),
+                'cancel'        => __('Cancel', 'wpzoom-user-history'),
+                'pleaseWait'    => __('Please wait...', 'wpzoom-user-history'),
+                'errorGeneric'  => __('Something went wrong. Please try again.', 'wpzoom-user-history'),
+                'confirmClear'  => __('Are you sure you want to clear all history for this user? This cannot be undone.', 'wpzoom-user-history'),
+                'clearing'      => __('Clearing...', 'wpzoom-user-history'),
+                'clearLog'      => __('Clear Log', 'wpzoom-user-history'),
+                'lockAccount'   => __('Lock Account', 'wpzoom-user-history'),
+                'unlockAccount' => __('Unlock Account', 'wpzoom-user-history'),
+                'confirmLock'   => __('Are you sure you want to lock this user? They will be logged out immediately.', 'wpzoom-user-history'),
+                'confirmUnlock' => __('Are you sure you want to unlock this user?', 'wpzoom-user-history'),
             ],
         ]);
     }
@@ -126,13 +126,13 @@ class User_History_Admin {
         $total_count = $this->plugin->get_user_history_count($user->ID);
         ?>
         <div class="user-history-section">
-            <h2><?php esc_html_e('Account History', 'user-history'); ?></h2>
+            <h2><?php esc_html_e('Account History', 'wpzoom-user-history'); ?></h2>
             <p class="description">
-                <?php esc_html_e('A log of changes made to this account.', 'user-history'); ?>
+                <?php esc_html_e('A log of changes made to this account.', 'wpzoom-user-history'); ?>
                 <?php if ($total_count > 0): ?>
                     <span class="user-history-count">
                         <?php printf(
-                            esc_html(_n('%d change recorded', '%d changes recorded', $total_count, 'user-history')),
+                            esc_html(_n('%d change recorded', '%d changes recorded', $total_count, 'wpzoom-user-history')),
                             (int) $total_count
                         ); ?>
                     </span>
@@ -142,16 +142,16 @@ class User_History_Admin {
             <div class="user-history-log" id="user-history-log" data-user-id="<?php echo esc_attr($user->ID); ?>">
                 <?php if (empty($history)): ?>
                     <p class="user-history-empty">
-                        <?php esc_html_e('No changes have been recorded yet.', 'user-history'); ?>
+                        <?php esc_html_e('No changes have been recorded yet.', 'wpzoom-user-history'); ?>
                     </p>
                 <?php else: ?>
                     <table class="widefat user-history-table">
                         <thead>
                             <tr>
-                                <th class="column-date"><?php esc_html_e('Date', 'user-history'); ?></th>
-                                <th class="column-field"><?php esc_html_e('Field', 'user-history'); ?></th>
-                                <th class="column-change"><?php esc_html_e('Change', 'user-history'); ?></th>
-                                <th class="column-by"><?php esc_html_e('Changed By', 'user-history'); ?></th>
+                                <th class="column-date"><?php esc_html_e('Date', 'wpzoom-user-history'); ?></th>
+                                <th class="column-field"><?php esc_html_e('Field', 'wpzoom-user-history'); ?></th>
+                                <th class="column-change"><?php esc_html_e('Change', 'wpzoom-user-history'); ?></th>
+                                <th class="column-by"><?php esc_html_e('Changed By', 'wpzoom-user-history'); ?></th>
                             </tr>
                         </thead>
                         <tbody id="user-history-tbody">
@@ -166,11 +166,11 @@ class User_History_Admin {
                         <?php if ($total_count > 20): ?>
                             <button type="button" class="button" id="user-history-load-more"
                                     data-offset="20" data-total="<?php echo esc_attr($total_count); ?>">
-                                <?php esc_html_e('Load More', 'user-history'); ?>
+                                <?php esc_html_e('Load More', 'wpzoom-user-history'); ?>
                             </button>
                         <?php endif; ?>
                         <button type="button" class="button user-history-clear-log" id="user-history-clear-log">
-                            <?php esc_html_e('Clear Log', 'user-history'); ?>
+                            <?php esc_html_e('Clear Log', 'wpzoom-user-history'); ?>
                         </button>
                     </div>
                 <?php endif; ?>
@@ -210,13 +210,13 @@ class User_History_Admin {
         );
         ?>
         <div class="user-history-section user-history-delete-section">
-            <h2><?php esc_html_e('Delete User', 'user-history'); ?></h2>
+            <h2><?php esc_html_e('Delete User', 'wpzoom-user-history'); ?></h2>
             <p class="description">
-                <?php esc_html_e('Permanently delete this user account. You will be able to reassign their content to another user.', 'user-history'); ?>
+                <?php esc_html_e('Permanently delete this user account. You will be able to reassign their content to another user.', 'wpzoom-user-history'); ?>
             </p>
             <p>
                 <a href="<?php echo esc_url($delete_url); ?>" class="button button-link-delete">
-                    <?php esc_html_e('Delete User', 'user-history'); ?>
+                    <?php esc_html_e('Delete User', 'wpzoom-user-history'); ?>
                 </a>
             </p>
         </div>
@@ -238,7 +238,7 @@ class User_History_Admin {
 
         foreach ($history as $entry) {
             $changed_by_user = get_userdata($entry->changed_by);
-            $changed_by_name = $changed_by_user ? $changed_by_user->display_name : __('Unknown', 'user-history');
+            $changed_by_name = $changed_by_user ? $changed_by_user->display_name : __('Unknown', 'wpzoom-user-history');
             $changed_by_link = $changed_by_user ? get_edit_user_link($entry->changed_by) : '#';
 
             $is_self = ($entry->user_id == $entry->changed_by);
@@ -264,7 +264,7 @@ class User_History_Admin {
                 $output .= '<span class="history-new-value">' . esc_html($entry->field_label) . '</span>';
             } elseif ($entry->field_name === 'user_pass') {
                 // Password changes just show "Changed" - no values ever stored
-                $output .= '<span class="history-new-value">' . esc_html__('Changed', 'user-history') . '</span>';
+                $output .= '<span class="history-new-value">' . esc_html__('Changed', 'wpzoom-user-history') . '</span>';
             } else {
                 if (!empty($entry->old_value)) {
                     $output .= '<span class="history-old-value">' . esc_html($this->truncate_value($entry->old_value)) . '</span>';
@@ -277,7 +277,7 @@ class User_History_Admin {
             // Changed by column
             $output .= '<td class="column-by">';
             if ($is_self) {
-                $output .= '<span class="history-self">' . esc_html__('Self', 'user-history') . '</span>';
+                $output .= '<span class="history-self">' . esc_html__('Self', 'wpzoom-user-history') . '</span>';
             } else {
                 $output .= '<a href="' . esc_url($changed_by_link) . '">' . esc_html($changed_by_name) . '</a>';
             }
@@ -311,7 +311,7 @@ class User_History_Admin {
      * AJAX handler for loading more history.
      */
     public function ajax_load_more_history() {
-        check_ajax_referer('user_history_nonce', 'nonce');
+        check_ajax_referer('wpzoom_user_history_nonce', 'nonce');
 
         if (!current_user_can('edit_users')) {
             wp_send_json_error(['message' => 'Unauthorized']);
@@ -345,20 +345,20 @@ class User_History_Admin {
      * AJAX handler for clearing user history.
      */
     public function ajax_clear_history() {
-        check_ajax_referer('user_history_clear', 'nonce');
+        check_ajax_referer('wpzoom_user_history_clear', 'nonce');
 
         if (!current_user_can('edit_users')) {
-            wp_send_json_error(['message' => __('Unauthorized', 'user-history')]);
+            wp_send_json_error(['message' => __('Unauthorized', 'wpzoom-user-history')]);
         }
 
         $user_id = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
 
         if (!$user_id) {
-            wp_send_json_error(['message' => __('Invalid user ID', 'user-history')]);
+            wp_send_json_error(['message' => __('Invalid user ID', 'wpzoom-user-history')]);
         }
 
         global $wpdb;
-        $table_name = $wpdb->prefix . User_History::TABLE_NAME;
+        $table_name = $wpdb->prefix . WPZOOM_User_History::TABLE_NAME;
 
         $deleted = $wpdb->delete(
             $table_name,
@@ -367,11 +367,11 @@ class User_History_Admin {
         );
 
         if ($deleted === false) {
-            wp_send_json_error(['message' => __('Failed to clear history', 'user-history')]);
+            wp_send_json_error(['message' => __('Failed to clear history', 'wpzoom-user-history')]);
         }
 
         wp_send_json_success([
-            'message' => __('History cleared successfully', 'user-history'),
+            'message' => __('History cleared successfully', 'wpzoom-user-history'),
         ]);
     }
 
@@ -381,24 +381,24 @@ class User_History_Admin {
     public function ajax_change_username() {
         $response = [
             'success'   => false,
-            'new_nonce' => wp_create_nonce('user_history_change_username'),
+            'new_nonce' => wp_create_nonce('wpzoom_user_history_change_username'),
         ];
 
         // Check capability
         if (!current_user_can('edit_users')) {
-            $response['message'] = __('You do not have permission to change usernames.', 'user-history');
+            $response['message'] = __('You do not have permission to change usernames.', 'wpzoom-user-history');
             wp_send_json($response);
         }
 
         // Validate nonce
-        if (!check_ajax_referer('user_history_change_username', '_ajax_nonce', false)) {
-            $response['message'] = __('Security check failed. Please refresh the page.', 'user-history');
+        if (!check_ajax_referer('wpzoom_user_history_change_username', '_ajax_nonce', false)) {
+            $response['message'] = __('Security check failed. Please refresh the page.', 'wpzoom-user-history');
             wp_send_json($response);
         }
 
         // Validate request
         if (empty($_POST['new_username']) || empty($_POST['current_username'])) {
-            $response['message'] = __('Invalid request.', 'user-history');
+            $response['message'] = __('Invalid request.', 'wpzoom-user-history');
             wp_send_json($response);
         }
 
@@ -410,26 +410,26 @@ class User_History_Admin {
         // Old username must exist
         $user_id = username_exists($old_username);
         if (!$user_id) {
-            $response['message'] = __('Invalid request.', 'user-history');
+            $response['message'] = __('Invalid request.', 'wpzoom-user-history');
             wp_send_json($response);
         }
 
         // If same username, nothing to do
         if ($new_username === $old_username) {
             $response['success'] = true;
-            $response['message'] = __('Username unchanged.', 'user-history');
+            $response['message'] = __('Username unchanged.', 'wpzoom-user-history');
             wp_send_json($response);
         }
 
         // Validate username length
         if (mb_strlen($new_username) < 3 || mb_strlen($new_username) > 60) {
-            $response['message'] = __('Username must be between 3 and 60 characters.', 'user-history');
+            $response['message'] = __('Username must be between 3 and 60 characters.', 'wpzoom-user-history');
             wp_send_json($response);
         }
 
         // Validate username characters
         if (!validate_username($new_username)) {
-            $response['message'] = __('This username contains invalid characters.', 'user-history');
+            $response['message'] = __('This username contains invalid characters.', 'wpzoom-user-history');
             wp_send_json($response);
         }
 
@@ -437,13 +437,13 @@ class User_History_Admin {
         // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core WP filter
         $illegal_logins = array_map('strtolower', (array) apply_filters('illegal_user_logins', []));
         if (in_array(strtolower($new_username), $illegal_logins, true)) {
-            $response['message'] = __('Sorry, that username is not allowed.', 'user-history');
+            $response['message'] = __('Sorry, that username is not allowed.', 'wpzoom-user-history');
             wp_send_json($response);
         }
 
         // Check if new username already exists
         if (username_exists($new_username)) {
-            $response['message'] = sprintf(__('The username "%s" is already taken.', 'user-history'), $new_username);
+            $response['message'] = sprintf(__('The username "%s" is already taken.', 'wpzoom-user-history'), $new_username);
             wp_send_json($response);
         }
 
@@ -451,7 +451,7 @@ class User_History_Admin {
         $this->change_username($user_id, $old_username, $new_username);
 
         $response['success'] = true;
-        $response['message'] = sprintf(__('Username changed to "%s".', 'user-history'), $new_username);
+        $response['message'] = sprintf(__('Username changed to "%s".', 'wpzoom-user-history'), $new_username);
         wp_send_json($response);
     }
 
@@ -521,7 +521,7 @@ class User_History_Admin {
          * @param string $old_username The old username.
          * @param string $new_username The new username.
          */
-        do_action('user_history_username_changed', $user_id, $old_username, $new_username);
+        do_action('wpzoom_user_history_username_changed', $user_id, $old_username, $new_username);
     }
 
     // =========================================================================
@@ -556,7 +556,7 @@ class User_History_Admin {
             return;
         }
 
-        $history_table = $wpdb->prefix . User_History::TABLE_NAME;
+        $history_table = $wpdb->prefix . WPZOOM_User_History::TABLE_NAME;
 
         // Check if table exists (plugin may not be activated yet)
         if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $history_table)) !== $history_table) {

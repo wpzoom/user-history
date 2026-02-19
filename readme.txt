@@ -1,4 +1,4 @@
-=== User History ===
+=== WPZOOM User History ===
 Contributors: wpzoom
 Tags: user history, user log, audit log, change username, user tracking
 Requires at least: 6.0
@@ -34,7 +34,7 @@ User History tracks all changes made to user profiles and displays a complete hi
 
 == Installation ==
 
-1. Upload the `user-history` folder to the `/wp-content/plugins/` directory
+1. Upload the `wpzoom-user-history` folder to the `/wp-content/plugins/` directory
 2. Activate the plugin through the 'Plugins' menu in WordPress
 3. Visit any user's edit page to see their Account History section
 
@@ -115,14 +115,3 @@ On the user edit page, scroll down to the Account History section and click the 
 * Track user profile changes
 * Change username feature
 * Account History display on user edit page
-
-== Upgrade Notice ==
-
-= 1.0.3 =
-Adds Delete User button on user edit page. Code improvements for WordPress.org compliance.
-
-= 1.0.2 =
-Adds Clear Log button, fixes role tracking with Members plugin, and fixes false positive password logging.
-
-= 1.0.1 =
-Adds ability to search users by their previous email or username on the All Users page.

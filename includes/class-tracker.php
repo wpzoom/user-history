@@ -13,12 +13,12 @@ if (!defined('ABSPATH')) {
 /**
  * Handles tracking of user profile and meta changes.
  */
-class User_History_Tracker {
+class WPZOOM_User_History_Tracker {
 
     /**
      * Reference to main plugin instance.
      *
-     * @var User_History
+     * @var WPZOOM_User_History
      */
     private $plugin;
 
@@ -88,7 +88,7 @@ class User_History_Tracker {
     /**
      * Constructor.
      *
-     * @param User_History $plugin Main plugin instance.
+     * @param WPZOOM_User_History $plugin Main plugin instance.
      */
     public function __construct($plugin) {
         global $wpdb;

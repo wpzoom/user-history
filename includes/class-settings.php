@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 /**
  * Handles the plugin settings page (Settings > User History).
  */
-class User_History_Settings {
+class WPZOOM_User_History_Settings {
 
     /**
      * Constructor — registers hooks.
@@ -28,10 +28,10 @@ class User_History_Settings {
      */
     public function add_settings_page() {
         add_options_page(
-            __('User History', 'user-history'),
-            __('User History', 'user-history'),
+            __('User History', 'wpzoom-user-history'),
+            __('User History', 'wpzoom-user-history'),
             'manage_options',
-            'user-history',
+            'wpzoom-user-history',
             [$this, 'render_settings_page']
         );
     }
@@ -40,25 +40,25 @@ class User_History_Settings {
      * Register settings, sections, and fields.
      */
     public function register_settings() {
-        register_setting('user_history_settings', 'user_history_locked_message', [
+        register_setting('wpzoom_user_history_settings', 'wpzoom_user_history_locked_message', [
             'type'              => 'string',
             'sanitize_callback' => 'sanitize_text_field',
             'default'           => '',
         ]);
 
         add_settings_section(
-            'user_history_lock_section',
-            __('Lock Account', 'user-history'),
+            'wpzoom_user_history_lock_section',
+            __('Lock Account', 'wpzoom-user-history'),
             [$this, 'render_lock_section_description'],
-            'user-history'
+            'wpzoom-user-history'
         );
 
         add_settings_field(
-            'user_history_locked_message',
-            __('Locked Account Message', 'user-history'),
+            'wpzoom_user_history_locked_message',
+            __('Locked Account Message', 'wpzoom-user-history'),
             [$this, 'render_locked_message_field'],
-            'user-history',
-            'user_history_lock_section'
+            'wpzoom-user-history',
+            'wpzoom_user_history_lock_section'
         );
     }
 
@@ -66,20 +66,20 @@ class User_History_Settings {
      * Render the lock settings section description.
      */
     public function render_lock_section_description() {
-        echo '<p>' . esc_html__('Configure the message shown when a locked user tries to log in.', 'user-history') . '</p>';
+        echo '<p>' . esc_html__('Configure the message shown when a locked user tries to log in.', 'wpzoom-user-history') . '</p>';
     }
 
     /**
      * Render the locked message settings field.
      */
     public function render_locked_message_field() {
-        $value = get_option('user_history_locked_message', '');
+        $value = get_option('wpzoom_user_history_locked_message', '');
         ?>
-        <input type="text" name="user_history_locked_message" class="regular-text"
+        <input type="text" name="wpzoom_user_history_locked_message" class="regular-text"
                value="<?php echo esc_attr($value); ?>"
-               placeholder="<?php echo esc_attr__('Your account has been locked. Please contact the administrator.', 'user-history'); ?>" />
+               placeholder="<?php echo esc_attr__('Your account has been locked. Please contact the administrator.', 'wpzoom-user-history'); ?>" />
         <p class="description">
-            <?php esc_html_e('This message is displayed on the login screen when a locked user attempts to log in. Leave empty to use the default message.', 'user-history'); ?>
+            <?php esc_html_e('This message is displayed on the login screen when a locked user attempts to log in. Leave empty to use the default message.', 'wpzoom-user-history'); ?>
         </p>
         <?php
     }
@@ -90,11 +90,11 @@ class User_History_Settings {
     public function render_settings_page() {
         ?>
         <div class="wrap">
-            <h1><?php esc_html_e('User History Settings', 'user-history'); ?></h1>
+            <h1><?php esc_html_e('User History Settings', 'wpzoom-user-history'); ?></h1>
             <form method="post" action="options.php">
                 <?php
-                settings_fields('user_history_settings');
-                do_settings_sections('user-history');
+                settings_fields('wpzoom_user_history_settings');
+                do_settings_sections('wpzoom-user-history');
                 submit_button();
                 ?>
             </form>

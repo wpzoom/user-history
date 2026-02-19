@@ -15,19 +15,19 @@ if (!defined('ABSPATH')) {
  * and all lock-related admin UI (user edit page, users list column,
  * bulk actions, row actions, filter view).
  */
-class User_History_Lock {
+class WPZOOM_User_History_Lock {
 
     /**
      * Reference to main plugin instance.
      *
-     * @var User_History
+     * @var WPZOOM_User_History
      */
     private $plugin;
 
     /**
      * Constructor — registers all lock-related hooks.
      *
-     * @param User_History $plugin Main plugin instance.
+     * @param WPZOOM_User_History $plugin Main plugin instance.
      */
     public function __construct($plugin) {
         $this->plugin = $plugin;
@@ -42,7 +42,7 @@ class User_History_Lock {
         add_action('show_user_profile', [$this, 'display_lock_user_section'], 98);
 
         // AJAX handler
-        add_action('wp_ajax_user_history_toggle_lock', [$this, 'ajax_toggle_lock']);
+        add_action('wp_ajax_wpzoom_user_history_toggle_lock', [$this, 'ajax_toggle_lock']);
 
         // Users list: column, row actions, bulk actions, filter view, admin notices
         add_filter('user_row_actions', [$this, 'add_lock_row_action'], 10, 2);
@@ -70,7 +70,7 @@ class User_History_Lock {
      * @return bool
      */
     public function is_user_locked($user_id) {
-        return get_user_meta($user_id, User_History::LOCKED_META_KEY, true) === '1';
+        return get_user_meta($user_id, WPZOOM_User_History::LOCKED_META_KEY, true) === '1';
     }
 
     /**
@@ -86,18 +86,18 @@ class User_History_Lock {
         }
 
         if ($user_id === get_current_user_id()) {
-            return new WP_Error('self_lock', __('You cannot lock your own account.', 'user-history'));
+            return new WP_Error('self_lock', __('You cannot lock your own account.', 'wpzoom-user-history'));
         }
 
         if (is_multisite() && is_super_admin($user_id)) {
-            return new WP_Error('super_admin_lock', __('Super admins cannot be locked.', 'user-history'));
+            return new WP_Error('super_admin_lock', __('Super admins cannot be locked.', 'wpzoom-user-history'));
         }
 
         if ($this->is_user_locked($user_id)) {
             return true;
         }
 
-        update_user_meta($user_id, User_History::LOCKED_META_KEY, '1');
+        update_user_meta($user_id, WPZOOM_User_History::LOCKED_META_KEY, '1');
 
         // Destroy all sessions immediately
         $sessions = WP_Session_Tokens::get_instance($user_id);
@@ -124,7 +124,7 @@ class User_History_Lock {
             return true;
         }
 
-        update_user_meta($user_id, User_History::LOCKED_META_KEY, '');
+        update_user_meta($user_id, WPZOOM_User_History::LOCKED_META_KEY, '');
 
         $this->plugin->log_change($user_id, get_current_user_id(), 'account_locked', 'Account Unlocked', 'Locked', '', 'unlock');
 
@@ -137,7 +137,7 @@ class User_History_Lock {
      * @return string
      */
     private function get_locked_message() {
-        $message = get_option('user_history_locked_message', '');
+        $message = get_option('wpzoom_user_history_locked_message', '');
 
         // Fall back to old lock-user-account plugin option
         if (empty($message)) {
@@ -145,7 +145,7 @@ class User_History_Lock {
         }
 
         if (empty($message)) {
-            $message = __('Your account has been locked. Please contact the administrator.', 'user-history');
+            $message = __('Your account has been locked. Please contact the administrator.', 'wpzoom-user-history');
         }
 
         return $message;
@@ -218,17 +218,17 @@ class User_History_Lock {
      * AJAX handler for lock/unlock toggle.
      */
     public function ajax_toggle_lock() {
-        check_ajax_referer('user_history_lock', 'nonce');
+        check_ajax_referer('wpzoom_user_history_lock', 'nonce');
 
         if (!current_user_can('edit_users')) {
-            wp_send_json_error(['message' => __('Unauthorized', 'user-history')]);
+            wp_send_json_error(['message' => __('Unauthorized', 'wpzoom-user-history')]);
         }
 
         $user_id = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
         $action  = isset($_POST['lock_action']) ? sanitize_key($_POST['lock_action']) : '';
 
         if (!$user_id || !in_array($action, ['lock', 'unlock'], true)) {
-            wp_send_json_error(['message' => __('Invalid request.', 'user-history')]);
+            wp_send_json_error(['message' => __('Invalid request.', 'wpzoom-user-history')]);
         }
 
         if ($action === 'lock') {
@@ -245,8 +245,8 @@ class User_History_Lock {
 
         wp_send_json_success([
             'message'  => $action === 'lock'
-                ? __('Account locked. All sessions have been destroyed.', 'user-history')
-                : __('Account unlocked.', 'user-history'),
+                ? __('Account locked. All sessions have been destroyed.', 'wpzoom-user-history')
+                : __('Account unlocked.', 'wpzoom-user-history'),
             'isLocked' => $is_locked,
         ]);
     }
@@ -278,15 +278,15 @@ class User_History_Lock {
         $is_locked = $this->is_user_locked($user->ID);
         ?>
         <div class="user-history-section user-history-lock-section">
-            <h2><?php esc_html_e('Account Status', 'user-history'); ?></h2>
+            <h2><?php esc_html_e('Account Status', 'wpzoom-user-history'); ?></h2>
             <p class="description">
-                <?php esc_html_e('Lock this account to prevent the user from logging in.', 'user-history'); ?>
+                <?php esc_html_e('Lock this account to prevent the user from logging in.', 'wpzoom-user-history'); ?>
             </p>
             <p class="user-history-lock-status">
                 <?php if ($is_locked): ?>
-                    <span class="user-history-lock-badge locked"><?php esc_html_e('Locked', 'user-history'); ?></span>
+                    <span class="user-history-lock-badge locked"><?php esc_html_e('Locked', 'wpzoom-user-history'); ?></span>
                 <?php else: ?>
-                    <span class="user-history-lock-badge active"><?php esc_html_e('Active', 'user-history'); ?></span>
+                    <span class="user-history-lock-badge active"><?php esc_html_e('Active', 'wpzoom-user-history'); ?></span>
                 <?php endif; ?>
             </p>
             <p>
@@ -294,8 +294,8 @@ class User_History_Lock {
                         data-user-id="<?php echo esc_attr($user->ID); ?>"
                         data-locked="<?php echo $is_locked ? 'yes' : 'no'; ?>">
                     <?php echo $is_locked
-                        ? esc_html__('Unlock Account', 'user-history')
-                        : esc_html__('Lock Account', 'user-history'); ?>
+                        ? esc_html__('Unlock Account', 'wpzoom-user-history')
+                        : esc_html__('Lock Account', 'wpzoom-user-history'); ?>
                 </button>
                 <span class="user-history-lock-message"></span>
             </p>
@@ -318,7 +318,7 @@ class User_History_Lock {
         foreach ($columns as $key => $value) {
             $new_columns[$key] = $value;
             if ($key === 'role') {
-                $new_columns['user_locked'] = __('Status', 'user-history');
+                $new_columns['user_locked'] = __('Status', 'wpzoom-user-history');
             }
         }
         return $new_columns;
@@ -338,7 +338,7 @@ class User_History_Lock {
         }
 
         if ($this->is_user_locked($user_id)) {
-            return '<span class="user-history-lock-badge locked">' . esc_html__('Locked', 'user-history') . '</span>';
+            return '<span class="user-history-lock-badge locked">' . esc_html__('Locked', 'wpzoom-user-history') . '</span>';
         }
 
         return '&mdash;';
@@ -371,21 +371,21 @@ class User_History_Lock {
         if ($is_locked) {
             $url = wp_nonce_url(
                 add_query_arg([
-                    'action'  => 'user_history_unlock',
+                    'action'  => 'wpzoom_user_history_unlock',
                     'user'    => $user_object->ID,
                 ], admin_url('users.php')),
-                'user_history_lock_' . $user_object->ID
+                'wpzoom_user_history_lock_' . $user_object->ID
             );
-            $actions['unlock'] = '<a href="' . esc_url($url) . '">' . esc_html__('Unlock', 'user-history') . '</a>';
+            $actions['unlock'] = '<a href="' . esc_url($url) . '">' . esc_html__('Unlock', 'wpzoom-user-history') . '</a>';
         } else {
             $url = wp_nonce_url(
                 add_query_arg([
-                    'action'  => 'user_history_lock',
+                    'action'  => 'wpzoom_user_history_lock',
                     'user'    => $user_object->ID,
                 ], admin_url('users.php')),
-                'user_history_lock_' . $user_object->ID
+                'wpzoom_user_history_lock_' . $user_object->ID
             );
-            $actions['lock'] = '<a href="' . esc_url($url) . '">' . esc_html__('Lock', 'user-history') . '</a>';
+            $actions['lock'] = '<a href="' . esc_url($url) . '">' . esc_html__('Lock', 'wpzoom-user-history') . '</a>';
         }
 
         return $actions;
@@ -404,7 +404,7 @@ class User_History_Lock {
         // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Nonce verified below with check_admin_referer
         $action = isset($_GET['action']) ? sanitize_key($_GET['action']) : '';
 
-        if (!in_array($action, ['user_history_lock', 'user_history_unlock'], true)) {
+        if (!in_array($action, ['wpzoom_user_history_lock', 'wpzoom_user_history_unlock'], true)) {
             return;
         }
 
@@ -415,9 +415,9 @@ class User_History_Lock {
             return;
         }
 
-        check_admin_referer('user_history_lock_' . $user_id);
+        check_admin_referer('wpzoom_user_history_lock_' . $user_id);
 
-        if ($action === 'user_history_lock') {
+        if ($action === 'wpzoom_user_history_lock') {
             $this->lock_user($user_id);
         } else {
             $this->unlock_user($user_id);
@@ -434,8 +434,8 @@ class User_History_Lock {
      * @return array
      */
     public function add_lock_bulk_actions($actions) {
-        $actions['lock_users']   = __('Lock', 'user-history');
-        $actions['unlock_users'] = __('Unlock', 'user-history');
+        $actions['lock_users']   = __('Lock', 'wpzoom-user-history');
+        $actions['unlock_users'] = __('Unlock', 'wpzoom-user-history');
         return $actions;
     }
 
@@ -468,8 +468,8 @@ class User_History_Lock {
         }
 
         return add_query_arg([
-            'user_history_lock_action' => $action,
-            'user_history_lock_count'  => $count,
+            'wpzoom_user_history_lock_action' => $action,
+            'wpzoom_user_history_lock_count'  => $count,
         ], $redirect_url);
     }
 
@@ -478,9 +478,9 @@ class User_History_Lock {
      */
     public function lock_bulk_action_admin_notice() {
         // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading action result from URL, value is sanitized
-        $action = isset($_GET['user_history_lock_action']) ? sanitize_key($_GET['user_history_lock_action']) : '';
+        $action = isset($_GET['wpzoom_user_history_lock_action']) ? sanitize_key($_GET['wpzoom_user_history_lock_action']) : '';
         // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading count from URL, value is cast to int
-        $count  = isset($_GET['user_history_lock_count']) ? (int) $_GET['user_history_lock_count'] : 0;
+        $count  = isset($_GET['wpzoom_user_history_lock_count']) ? (int) $_GET['wpzoom_user_history_lock_count'] : 0;
 
         if (empty($action) || !$count) {
             return;
@@ -488,12 +488,12 @@ class User_History_Lock {
 
         if ($action === 'lock_users') {
             $message = sprintf(
-                _n('%d user locked.', '%d users locked.', $count, 'user-history'),
+                _n('%d user locked.', '%d users locked.', $count, 'wpzoom-user-history'),
                 $count
             );
         } else {
             $message = sprintf(
-                _n('%d user unlocked.', '%d users unlocked.', $count, 'user-history'),
+                _n('%d user unlocked.', '%d users unlocked.', $count, 'wpzoom-user-history'),
                 $count
             );
         }
@@ -513,7 +513,7 @@ class User_History_Lock {
         $count = (int) $wpdb->get_var(
             $wpdb->prepare(
                 "SELECT COUNT(DISTINCT user_id) FROM {$wpdb->usermeta} WHERE meta_key = %s AND meta_value = %s",
-                User_History::LOCKED_META_KEY,
+                WPZOOM_User_History::LOCKED_META_KEY,
                 '1'
             )
         );
@@ -523,14 +523,14 @@ class User_History_Lock {
         }
 
         // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading filter from URL, value is sanitized
-        $current_filter = isset($_GET['user_history_filter']) ? sanitize_key($_GET['user_history_filter']) : '';
+        $current_filter = isset($_GET['wpzoom_user_history_filter']) ? sanitize_key($_GET['wpzoom_user_history_filter']) : '';
         $class = ($current_filter === 'locked') ? 'current' : '';
 
         $views['locked'] = sprintf(
             '<a href="%s" class="%s">%s <span class="count">(%d)</span></a>',
-            esc_url(add_query_arg('user_history_filter', 'locked', admin_url('users.php'))),
+            esc_url(add_query_arg('wpzoom_user_history_filter', 'locked', admin_url('users.php'))),
             $class,
-            esc_html__('Locked', 'user-history'),
+            esc_html__('Locked', 'wpzoom-user-history'),
             $count
         );
 
@@ -550,10 +550,10 @@ class User_History_Lock {
         }
 
         // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Reading filter from URL, value is sanitized
-        $filter = isset($_GET['user_history_filter']) ? sanitize_key($_GET['user_history_filter']) : '';
+        $filter = isset($_GET['wpzoom_user_history_filter']) ? sanitize_key($_GET['wpzoom_user_history_filter']) : '';
 
         if ($filter === 'locked') {
-            $query->set('meta_key', User_History::LOCKED_META_KEY);
+            $query->set('meta_key', WPZOOM_User_History::LOCKED_META_KEY);
             $query->set('meta_value', '1');
         }
     }
@@ -573,10 +573,10 @@ class User_History_Lock {
         }
 
         wp_enqueue_style(
-            'user-history-admin',
-            USER_HISTORY_PLUGIN_URL . 'assets/css/admin.css',
+            'wpzoom-user-history-admin',
+            WPZOOM_USER_HISTORY_PLUGIN_URL . 'assets/css/admin.css',
             [],
-            USER_HISTORY_VERSION
+            WPZOOM_USER_HISTORY_VERSION
         );
     }
 }
