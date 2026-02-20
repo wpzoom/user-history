@@ -487,11 +487,13 @@ class WPZOOM_User_History_Lock {
         }
 
         if ($action === 'lock_users') {
+            /* translators: %d: number of users locked */
             $message = sprintf(
                 _n('%d user locked.', '%d users locked.', $count, 'wpzoom-user-history'),
                 $count
             );
         } else {
+            /* translators: %d: number of users unlocked */
             $message = sprintf(
                 _n('%d user unlocked.', '%d users unlocked.', $count, 'wpzoom-user-history'),
                 $count
@@ -510,6 +512,7 @@ class WPZOOM_User_History_Lock {
     public function add_locked_users_view($views) {
         global $wpdb;
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting locked users from usermeta
         $count = (int) $wpdb->get_var(
             $wpdb->prepare(
                 "SELECT COUNT(DISTINCT user_id) FROM {$wpdb->usermeta} WHERE meta_key = %s AND meta_value = %s",

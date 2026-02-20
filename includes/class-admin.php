@@ -131,7 +131,9 @@ class WPZOOM_User_History_Admin {
                 <?php esc_html_e('A log of changes made to this account.', 'wpzoom-user-history'); ?>
                 <?php if ($total_count > 0): ?>
                     <span class="user-history-count">
-                        <?php printf(
+                        <?php
+                        /* translators: %d: number of changes recorded */
+                        printf(
                             esc_html(_n('%d change recorded', '%d changes recorded', $total_count, 'wpzoom-user-history')),
                             (int) $total_count
                         ); ?>
@@ -360,6 +362,7 @@ class WPZOOM_User_History_Admin {
         global $wpdb;
         $table_name = $wpdb->prefix . WPZOOM_User_History::TABLE_NAME;
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Deleting from custom plugin table, no cache to invalidate
         $deleted = $wpdb->delete(
             $table_name,
             ['user_id' => $user_id],
@@ -443,6 +446,7 @@ class WPZOOM_User_History_Admin {
 
         // Check if new username already exists
         if (username_exists($new_username)) {
+            /* translators: %s: the requested username */
             $response['message'] = sprintf(__('The username "%s" is already taken.', 'wpzoom-user-history'), $new_username);
             wp_send_json($response);
         }
@@ -451,6 +455,7 @@ class WPZOOM_User_History_Admin {
         $this->change_username($user_id, $old_username, $new_username);
 
         $response['success'] = true;
+        /* translators: %s: the new username */
         $response['message'] = sprintf(__('Username changed to "%s".', 'wpzoom-user-history'), $new_username);
         wp_send_json($response);
     }
@@ -477,6 +482,7 @@ class WPZOOM_User_History_Admin {
         );
 
         // Update user_login
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- user_login is not writable via WP API
         $wpdb->update(
             $wpdb->users,
             ['user_login' => $new_username],
@@ -486,6 +492,7 @@ class WPZOOM_User_History_Admin {
         );
 
         // Update user_nicename if it matches the old username
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Conditional update requires direct query
         $wpdb->query($wpdb->prepare(
             "UPDATE $wpdb->users SET user_nicename = %s WHERE ID = %d AND user_nicename = %s",
             sanitize_title($new_username),
@@ -494,6 +501,7 @@ class WPZOOM_User_History_Admin {
         ));
 
         // Update display_name if it matches the old username
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Conditional update requires direct query
         $wpdb->query($wpdb->prepare(
             "UPDATE $wpdb->users SET display_name = %s WHERE ID = %d AND display_name = %s",
             $new_username,
@@ -559,14 +567,16 @@ class WPZOOM_User_History_Admin {
         $history_table = $wpdb->prefix . WPZOOM_User_History::TABLE_NAME;
 
         // Check if table exists (plugin may not be activated yet)
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Checking if custom table exists
         if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $history_table)) !== $history_table) {
             return;
         }
 
         // Find user IDs that have matching old values in history
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Querying custom history table for user search
         $user_ids_from_history = $wpdb->get_col(
-            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Table name is safely constructed from $wpdb->prefix
             $wpdb->prepare(
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Table name is safely constructed from $wpdb->prefix
                 "SELECT DISTINCT user_id FROM $history_table
                 WHERE old_value LIKE %s
                 AND field_name IN ('user_login', 'user_email', 'first_name', 'last_name', 'display_name', 'nickname')",

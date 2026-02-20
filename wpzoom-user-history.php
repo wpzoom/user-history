@@ -179,6 +179,7 @@ class WPZOOM_User_History {
         global $wpdb;
 
         // Find all users locked by the old plugin
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- One-time migration query
         $locked_user_ids = $wpdb->get_col(
             $wpdb->prepare(
                 "SELECT user_id FROM {$wpdb->usermeta} WHERE meta_key = %s AND meta_value = %s",
@@ -214,6 +215,7 @@ class WPZOOM_User_History {
 
         $table_name = $wpdb->prefix . self::TABLE_NAME;
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Inserting into custom plugin table
         $wpdb->insert(
             $table_name,
             [
@@ -243,9 +245,10 @@ class WPZOOM_User_History {
 
         $table_name = $wpdb->prefix . self::TABLE_NAME;
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Querying custom history table
         $results = $wpdb->get_results(
-            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Table name is safely constructed from $wpdb->prefix
             $wpdb->prepare(
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Table name is safely constructed from $wpdb->prefix
                 "SELECT * FROM $table_name
                 WHERE user_id = %d
                 ORDER BY created_at DESC
@@ -270,9 +273,10 @@ class WPZOOM_User_History {
 
         $table_name = $wpdb->prefix . self::TABLE_NAME;
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Counting from custom history table
         return (int) $wpdb->get_var(
-            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Table name is safely constructed from $wpdb->prefix
             $wpdb->prepare(
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Table name is safely constructed from $wpdb->prefix
                 "SELECT COUNT(*) FROM $table_name WHERE user_id = %d",
                 $user_id
             )
